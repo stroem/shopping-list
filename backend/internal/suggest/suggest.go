@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/stroem/shopping-list/backend/internal/web"
 )
 
 // Suggestion is one ranked autocomplete result.
@@ -125,6 +127,11 @@ func (s *Service) Suggest(ctx context.Context, deviceID, q string, limit int) ([
 // users.household_id. #8 (Google auth + invite links) swaps this body. An unknown
 // device or a user with no household returns nil ⇒ catalog-only suggestions.
 func (s *Service) resolveHousehold(ctx context.Context, deviceID string) (*string, error) {
+	// Prefer the authenticated household set by the auth middleware (#8). Falls
+	// back to the provisional X-Device-Id path when there is no principal.
+	if hid, ok := web.HouseholdID(ctx); ok {
+		return &hid, nil
+	}
 	if deviceID == "" {
 		return nil, nil
 	}
