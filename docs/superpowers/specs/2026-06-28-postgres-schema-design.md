@@ -35,7 +35,7 @@ or queries (those land with each domain ticket #8–#12).
   autocomplete). No tsvector FTS in v1 — ranking is by purchase frequency, not text
   relevance.
 
-## Schema (8 tables)
+## Schema (11 tables)
 
 Shared columns on every table unless noted: `id uuid PK DEFAULT gen_random_uuid()`,
 `created_at`, `updated_at` (`NOT NULL DEFAULT now()`), `deleted_at NULL`.
@@ -66,8 +66,33 @@ Shared columns on every table unless noted: `id uuid PK DEFAULT gen_random_uuid(
 `list_item_id uuid NULL REFERENCES list_items(id)`,
 `user_id uuid NULL REFERENCES users(id)`,
 `item_id uuid NULL REFERENCES items(id)`,
+`store_id uuid NULL REFERENCES stores(id)` (where it was checked off — per-store stats),
 `quantity int NOT NULL DEFAULT 1`,
 `checked_at timestamptz NOT NULL DEFAULT now()`.
+
+### Store-aware tables (structure ready; behaviour is a follow-up issue)
+
+**`stores`** (per-household places the household shops at) —
+`household_id uuid NOT NULL REFERENCES households(id)`, `name text NOT NULL`,
+`chain text NULL`, `place_id text NULL` (Google Maps Place ID),
+`osm_id text NULL` (OpenStreetMap), `latitude double precision NULL`,
+`longitude double precision NULL`, `address text NULL`.
+Constraint: `UNIQUE (household_id, place_id)` (idempotent store detection).
+
+**`store_aisles`** (walking order of aisles within a store — drives list sorting) —
+`household_id uuid NOT NULL REFERENCES households(id)`,
+`store_id uuid NOT NULL REFERENCES stores(id)`, `aisle int NOT NULL`,
+`position int NOT NULL DEFAULT 0`, `label text NULL`.
+Constraint: `UNIQUE (store_id, aisle)`.
+
+**`store_items`** (per-store location and availability of an item) —
+`household_id uuid NOT NULL REFERENCES households(id)`,
+`store_id uuid NOT NULL REFERENCES stores(id)`,
+`item_id uuid NOT NULL REFERENCES items(id)`, `aisle int NULL`,
+`position int NULL`, `available boolean NOT NULL DEFAULT true`,
+`last_seen_at timestamptz NULL`.
+Constraint: `UNIQUE (store_id, item_id)`. `available=false` records that a store
+does not carry an item (e.g. "grillad kyckling" absent here).
 
 **`food_catalog`** (global reference; Livsmedelsverket generics) —
 `source text NOT NULL`, `external_id text NULL`, `name text NOT NULL`,
@@ -84,9 +109,11 @@ Shared columns on every table unless noted: `id uuid PK DEFAULT gen_random_uuid(
 - `CREATE EXTENSION IF NOT EXISTS pg_trgm;`
 - GIN trigram on `items (name gin_trgm_ops)` and `food_catalog (name gin_trgm_ops)` — autocomplete.
 - `items (household_id, purchase_count DESC, last_purchased_at DESC)` — ranked autocomplete.
-- `(household_id, updated_at)` on `lists`, `items`, `list_items`, `check_off_events`, `users` — pull-sync cursor + scoping.
+- `(household_id, updated_at)` on `lists`, `items`, `list_items`, `check_off_events`, `users`, `stores`, `store_aisles`, `store_items` — pull-sync cursor + scoping.
 - `list_items (list_id)` — list rendering.
 - `UNIQUE (source, external_id)` on `food_catalog` (also an index).
+- `UNIQUE (household_id, place_id)` on `stores`; `UNIQUE (store_id, aisle)` on `store_aisles`; `UNIQUE (store_id, item_id)` on `store_items`.
+- `check_off_events (store_id, item_id)` — per-store availability/stats queries.
 
 ## Components
 
@@ -114,9 +141,9 @@ func Migrate(ctx context.Context, databaseURL string) error
    `DATABASE_URL` is unset, `t.Skip(...)` (matches AGENTS.md "DB-backed tests skip
    cleanly").
 2. Start an ephemeral Postgres with **testcontainers-go** (`modules/postgres`).
-3. Build a `*migrate.Migrate` over the embedded FS; run **Up**; assert all 8 table
-   names exist in `information_schema.tables`.
-4. Run **Down**; assert all 8 are gone (the `schema_migrations` bookkeeping table
+3. Build a `*migrate.Migrate` over the embedded FS; run **Up**; assert all 11
+   table names exist in `information_schema.tables`.
+4. Run **Down**; assert all 11 are gone (the `schema_migrations` bookkeeping table
    may remain — that's expected).
 
 Green bar for this issue: `go test ./...` in `backend/` (the migration test runs
@@ -128,3 +155,9 @@ Go row structs / repositories / queries (per domain ticket #8–#12) · the `cmd
 importer that fills `food_catalog`/`ean_mappings` (#5/#6) · DB-backed health check
 and pool wiring in `cmd/api` (#3) · nutrient/allergen modeling (deferred; `raw
 jsonb` reserves room).
+
+**Store-aware behaviour is explicitly out of scope here** — this issue only adds
+the `stores` / `store_aisles` / `store_items` tables and `check_off_events.store_id`
+so the structure is ready. Google Maps store detection, per-store aisle ordering of
+the list, and per-store availability/statistics are a **separate follow-up issue**
+filed after this PR.
