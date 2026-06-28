@@ -17,7 +17,12 @@ import (
 // Migrate applies all pending up migrations to the database at databaseURL.
 // It is safe to call on every startup: an already-migrated database is a no-op.
 // databaseURL must use the pgx scheme, e.g. "pgx5://user:pass@host:5432/db".
+//
+// ctx is part of the intended call-site interface (cmd/api passes its startup
+// context); golang-migrate v4's Up() does not yet thread a context, so
+// cancellation cannot currently propagate into the migration run.
 func Migrate(ctx context.Context, databaseURL string) error {
+	_ = ctx
 	src, err := iofs.New(migrations.FS, ".")
 	if err != nil {
 		return fmt.Errorf("load embedded migrations: %w", err)
