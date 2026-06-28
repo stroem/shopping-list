@@ -5,14 +5,16 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
+	"github.com/stroem/shopping-list/backend/internal/logging"
 	"github.com/stroem/shopping-list/backend/internal/router"
 	"github.com/stroem/shopping-list/backend/internal/suggest"
 )
@@ -20,15 +22,22 @@ import (
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		// Config failed before LOG_LEVEL is known; log at the default level.
+		slog.SetDefault(logging.New(os.Stderr, "info"))
+		slog.Error("config", "err", err)
+		os.Exit(1)
 	}
+
+	logger := logging.New(os.Stderr, cfg.LogLevel)
+	slog.SetDefault(logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("database: %v", err)
+		slog.Error("database", "err", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
@@ -39,9 +48,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("api listening on %s", srv.Addr)
+		slog.Info("api listening", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
+			slog.Error("server error", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -49,6 +59,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", "err", err)
 	}
 }

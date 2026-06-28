@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type ctxKey int
@@ -20,7 +22,10 @@ func Recoverer(next http.Handler) http.Handler {
 				if rec == http.ErrAbortHandler {
 					panic(rec)
 				}
-				log.Printf("panic recovered: %v", rec)
+				slog.ErrorContext(r.Context(), "panic recovered",
+					"panic", rec,
+					"request_id", middleware.GetReqID(r.Context()),
+				)
 				Error(w, http.StatusInternalServerError, "internal server error")
 			}
 		}()
