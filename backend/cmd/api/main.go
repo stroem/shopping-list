@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/stroem/shopping-list/backend/internal/router"
 )
@@ -16,8 +17,15 @@ func main() {
 		port = "8080"
 	}
 	addr := ":" + port
+
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           router.New(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
 	log.Printf("api listening on %s", addr)
-	if err := http.ListenAndServe(addr, router.New()); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
