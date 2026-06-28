@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Shopping List backend — Go Lambda behind an HTTP API, Neon Postgres.
+
+Parameters:
+  DatabaseUrlParam:
+    Type: String
+    Default: /shopping-list/database-url
+    Description: SSM SecureString parameter name holding the Neon pooled connection URL.
+
+Globals:
+  Function:
+    Runtime: provided.al2023
+    Architectures: [arm64]
+    MemorySize: 128
+    Timeout: 10
+
+Resources:
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: ../backend
+      Handler: bootstrap
+      Environment:
+        Variables:
+          DATABASE_URL_PARAM: !Ref DatabaseUrlParam
+      Policies:
+        # Inline (not SSMParameterReadPolicy): that managed policy builds
+        # arn:…:parameter/${name}, which double-slashes a leading-slash name.
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DatabaseUrlParam}"
+      Events:
+        Api:
+          Type: HttpApi
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the HTTP API.
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
