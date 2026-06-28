@@ -16,6 +16,7 @@ import (
 
 	"github.com/stroem/shopping-list/backend/internal/db"
 	"github.com/stroem/shopping-list/backend/internal/router"
+	"github.com/stroem/shopping-list/backend/internal/suggest"
 )
 
 func main() {
@@ -37,6 +38,6 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 
-	adapter := httpadapter.NewV2(router.New(router.Deps{DB: pool}))
+	adapter := httpadapter.NewV2(router.New(router.Deps{DB: pool, Suggest: suggest.New(pool)}))
 	lambda.Start(adapter.ProxyWithContext)
 }

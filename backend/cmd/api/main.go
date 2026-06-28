@@ -14,6 +14,7 @@ import (
 	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
 	"github.com/stroem/shopping-list/backend/internal/router"
+	"github.com/stroem/shopping-list/backend/internal/suggest"
 )
 
 func main() {
@@ -33,7 +34,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           router.New(router.Deps{DB: pool}),
+		Handler:           router.New(router.Deps{DB: pool, Suggest: suggest.New(pool)}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
