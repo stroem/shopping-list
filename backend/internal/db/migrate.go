@@ -33,3 +33,20 @@ func Migrate(ctx context.Context, databaseURL string) error {
 	}
 	return nil
 }
+
+// MigrateDown reverts all migrations. Intended for tests; not called in production.
+func MigrateDown(databaseURL string) error {
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		return fmt.Errorf("load embedded migrations: %w", err)
+	}
+	m, err := migrate.NewWithSourceInstance("iofs", src, databaseURL)
+	if err != nil {
+		return fmt.Errorf("init migrator: %w", err)
+	}
+	defer m.Close()
+	if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("revert migrations: %w", err)
+	}
+	return nil
+}
