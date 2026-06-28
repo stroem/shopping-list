@@ -56,9 +56,12 @@ func TestSuggestRankingAndIsolation(t *testing.T) {
 	ctx := context.Background()
 	pool := newPool(t)
 
-	// Two households, each with a device. Household A has bought "Mjölk" twice.
-	// pgx's default Exec uses the extended protocol, which rejects multiple
-	// statements per call — so seed one statement at a time.
+	// Two households, each with a device. pgx's default Exec uses the extended
+	// protocol, which rejects multiple statements per call — seed one at a time.
+	// Household A items exercise frequency (pc) then recency (last_purchased_at):
+	//   Mjölksyra pc9 newest, Mjölk pc9 older, Mjölkfil pc3 → that exact order.
+	// food_catalog has a literal "Mjölk" (must be deduped under the household
+	// item) and a fuzzy-only "Lättmjölk" (no prefix match).
 	seed := []string{
 		`INSERT INTO households (id) VALUES
 			('11111111-1111-1111-1111-111111111111'),
@@ -66,12 +69,16 @@ func TestSuggestRankingAndIsolation(t *testing.T) {
 		`INSERT INTO users (device_id, household_id) VALUES
 			('devA', '11111111-1111-1111-1111-111111111111'),
 			('devB', '22222222-2222-2222-2222-222222222222')`,
-		`INSERT INTO items (household_id, name, aisle, purchase_count) VALUES
-			('11111111-1111-1111-1111-111111111111', 'Mjölk', 2, 5),
-			('22222222-2222-2222-2222-222222222222', 'Mjölk hemlig B', 2, 9)`,
+		`INSERT INTO items (household_id, name, aisle, purchase_count, last_purchased_at) VALUES
+			('11111111-1111-1111-1111-111111111111', 'Mjölk',     2, 9, now() - interval '2 days'),
+			('11111111-1111-1111-1111-111111111111', 'Mjölksyra', 2, 9, now()),
+			('11111111-1111-1111-1111-111111111111', 'Mjölkfil',  2, 3, now()),
+			('22222222-2222-2222-2222-222222222222', 'Mjölk hemlig B', 2, 50, now())`,
 		`INSERT INTO food_catalog (source, external_id, name, aisle) VALUES
 			('livsmedelsverket', '1', 'Mjölk 3%', 2),
-			('livsmedelsverket', '2', 'Mjölkchoklad', 9)`,
+			('livsmedelsverket', '2', 'Mjölk', 2),
+			('livsmedelsverket', '3', 'Lättmjölk', 2),
+			('livsmedelsverket', '4', 'Mjölkchoklad', 9)`,
 		`INSERT INTO ean_mappings (ean, name, aisle, source) VALUES
 			('73100', 'Mjölk Arla', 2, 'openfoodfacts')`,
 	}
@@ -83,17 +90,36 @@ func TestSuggestRankingAndIsolation(t *testing.T) {
 
 	s := suggest.New(pool)
 
-	// Household A: its own item ranks first; results deduped; B's item absent.
-	got, err := s.Suggest(ctx, "devA", "Mjölk", 10)
+	got, err := s.Suggest(ctx, "devA", "Mjölk", 25)
 	if err != nil {
 		t.Fatalf("suggest A: %v", err)
 	}
-	if len(got) == 0 || got[0].Name != "Mjölk" || got[0].Source != "items" {
-		t.Fatalf("A first = %+v, want items 'Mjölk' first; all=%v", firstOrZero(got), names(got))
+
+	// Household items come first, ordered by purchase_count DESC then recency:
+	// Mjölksyra (pc9, newest) → Mjölk (pc9, older) → Mjölkfil (pc3).
+	wantItemPrefix := []string{"Mjölksyra", "Mjölk", "Mjölkfil"}
+	all := names(got)
+	if len(all) < 3 || all[0] != wantItemPrefix[0] || all[1] != wantItemPrefix[1] || all[2] != wantItemPrefix[2] {
+		t.Fatalf("items order = %v, want first three %v (pc then recency)", all, wantItemPrefix)
 	}
+	for i := 0; i < 3; i++ {
+		if got[i].Source != "items" {
+			t.Fatalf("result %d (%s) source = %q, want items", i, got[i].Name, got[i].Source)
+		}
+	}
+
+	// Dedup: the catalog "Mjölk" collapses under the household item — exactly one
+	// "Mjölk", sourced from items.
+	mjolk := 0
 	for _, sug := range got {
+		if sug.Name == "Mjölk" {
+			mjolk++
+			if sug.Source != "items" {
+				t.Fatalf("'Mjölk' kept from %q, want items (household wins dedup)", sug.Source)
+			}
+		}
 		if sug.Name == "Mjölk hemlig B" {
-			t.Fatalf("household leak: A saw B's item; all=%v", names(got))
+			t.Fatalf("household leak: A saw B's item; all=%v", all)
 		}
 		if sug.Source == "openfoodfacts" && sug.EAN == nil {
 			t.Fatalf("branded row missing ean: %+v", sug)
@@ -101,6 +127,17 @@ func TestSuggestRankingAndIsolation(t *testing.T) {
 		if sug.Source != "openfoodfacts" && sug.EAN != nil {
 			t.Fatalf("non-branded row has ean: %+v", sug)
 		}
+	}
+	if mjolk != 1 {
+		t.Fatalf("'Mjölk' appeared %d times, want 1 (dedup); all=%v", mjolk, all)
+	}
+
+	// Prefix beats fuzzy: the prefix match "Mjölk 3%" outranks the fuzzy-only
+	// "Lättmjölk" within the catalog tier.
+	if p, f := indexOf(all, "Mjölk 3%"), indexOf(all, "Lättmjölk"); p == -1 {
+		t.Fatalf("'Mjölk 3%%' missing from results: %v", all)
+	} else if f != -1 && p > f {
+		t.Fatalf("prefix 'Mjölk 3%%' (%d) ranked after fuzzy 'Lättmjölk' (%d); all=%v", p, f, all)
 	}
 
 	// Unknown device → catalog-only (no items source at all).
@@ -124,9 +161,11 @@ func TestSuggestRankingAndIsolation(t *testing.T) {
 	}
 }
 
-func firstOrZero(s []suggest.Suggestion) suggest.Suggestion {
-	if len(s) == 0 {
-		return suggest.Suggestion{}
+func indexOf(ss []string, want string) int {
+	for i, s := range ss {
+		if s == want {
+			return i
+		}
 	}
-	return s[0]
+	return -1
 }
