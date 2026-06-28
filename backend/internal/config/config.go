@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -19,15 +20,20 @@ type Config struct {
 	RequestTimeout time.Duration // per-request deadline, default 5s (REQUEST_TIMEOUT)
 	OIDCIssuer     string        // OIDC issuer, default https://accounts.google.com
 	OIDCAudience   string        // OIDC audience (Google client id); empty ⇒ auth disabled
+	// CORSAllowedOrigins lists the cross-origin web origins permitted to call the
+	// API, parsed from CORS_ALLOWED_ORIGINS (comma-separated). Empty means the
+	// router applies its safe local-dev default; set it in production.
+	CORSAllowedOrigins []string
 }
 
 // Load reads configuration from the environment. DATABASE_URL is required.
 func Load() (Config, error) {
 	cfg := Config{
-		DatabaseURL:    os.Getenv("DATABASE_URL"),
-		Port:           os.Getenv("PORT"),
-		LogLevel:       os.Getenv("LOG_LEVEL"),
-		RequestTimeout: requestTimeout(os.Getenv("REQUEST_TIMEOUT")),
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		Port:               os.Getenv("PORT"),
+		LogLevel:           os.Getenv("LOG_LEVEL"),
+		RequestTimeout:     requestTimeout(os.Getenv("REQUEST_TIMEOUT")),
+		CORSAllowedOrigins: ParseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required")
@@ -44,6 +50,20 @@ func Load() (Config, error) {
 	}
 	cfg.OIDCAudience = os.Getenv("OIDC_AUDIENCE")
 	return cfg, nil
+}
+
+// ParseCORSOrigins splits a comma-separated CORS_ALLOWED_ORIGINS value, trimming
+// spaces and dropping empties. It returns nil when nothing usable is present, so
+// the router can apply its local-dev default. Exported so cmd/lambda, which does
+// not call Load, can parse the same env var consistently.
+func ParseCORSOrigins(raw string) []string {
+	var origins []string
+	for _, part := range strings.Split(raw, ",") {
+		if o := strings.TrimSpace(part); o != "" {
+			origins = append(origins, o)
+		}
+	}
+	return origins
 }
 
 // requestTimeout parses a Go duration string, falling back to the default on an

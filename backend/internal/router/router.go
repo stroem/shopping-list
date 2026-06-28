@@ -9,10 +9,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 
 	"github.com/stroem/shopping-list/backend/internal/auth"
 	"github.com/stroem/shopping-list/backend/internal/web"
 )
+
+// defaultCORSOrigins keeps local web dev (flutter run -d chrome serves on a
+// random localhost port) working out of the box when CORS_ALLOWED_ORIGINS is
+// unset, without ever defaulting to an unconditional "*". Operators set the env
+// var to their real web origin(s) in production.
+var defaultCORSOrigins = []string{"http://localhost:*", "http://127.0.0.1:*"}
 
 // Pinger is the database dependency the health check needs. *pgxpool.Pool
 // satisfies it; tests pass a fake.
@@ -29,11 +36,30 @@ type Deps struct {
 	RequestTimeout time.Duration
 	AuthMiddleware func(http.Handler) http.Handler
 	Households     HouseholdStore
+	// CORSAllowedOrigins are the cross-origin web origins allowed to call the API.
+	// Empty falls back to defaultCORSOrigins (local dev only), never "*".
+	CORSAllowedOrigins []string
 }
 
 // New returns the application's HTTP handler.
 func New(deps Deps) http.Handler {
 	r := chi.NewRouter()
+
+	allowedOrigins := deps.CORSAllowedOrigins
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = defaultCORSOrigins
+	}
+	// CORS runs first so preflight OPTIONS short-circuits with a 2xx before chi
+	// routing can return 405 MethodNotAllowed. AllowCredentials stays false: auth
+	// is the X-Device-Id header / join code, not cookies.
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   allowedOrigins,
+		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowedHeaders:   []string{"Accept", "Content-Type", "X-Device-Id", "Idempotency-Key", "Authorization"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
+
 	r.Use(middleware.RequestID)
 	r.Use(web.Recoverer)
 	r.Use(web.Timeout(deps.RequestTimeout))

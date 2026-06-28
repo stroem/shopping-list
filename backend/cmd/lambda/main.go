@@ -15,6 +15,7 @@ import (
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 
 	"github.com/stroem/shopping-list/backend/internal/auth"
+	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
 	"github.com/stroem/shopping-list/backend/internal/households"
 	"github.com/stroem/shopping-list/backend/internal/logging"
@@ -60,11 +61,15 @@ func main() {
 		verifier = v
 	}
 
+	// Lambda skips config.Load; read the CORS origins straight from env, parsed
+	// the same way so cmd/api and cmd/lambda behave identically.
+	corsOrigins := config.ParseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	adapter := httpadapter.NewV2(router.New(router.Deps{
-		DB:             pool,
-		Suggest:        suggest.New(pool),
-		AuthMiddleware: auth.Middleware(verifier, auth.NewUserStore(pool)),
-		Households:     households.NewStore(pool),
+		DB:                 pool,
+		Suggest:            suggest.New(pool),
+		AuthMiddleware:     auth.Middleware(verifier, auth.NewUserStore(pool)),
+		Households:         households.NewStore(pool),
+		CORSAllowedOrigins: corsOrigins,
 	}))
 	lambda.Start(adapter.ProxyWithContext)
 }

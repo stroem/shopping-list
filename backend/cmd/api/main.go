@@ -47,11 +47,12 @@ func main() {
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: router.New(router.Deps{
-			DB:             pool,
-			Suggest:        suggest.New(pool),
-			RequestTimeout: cfg.RequestTimeout,
-			AuthMiddleware: auth.Middleware(verifier, auth.NewUserStore(pool)),
-			Households:     households.NewStore(pool),
+			DB:                 pool,
+			Suggest:            suggest.New(pool),
+			RequestTimeout:     cfg.RequestTimeout,
+			AuthMiddleware:     auth.Middleware(verifier, auth.NewUserStore(pool)),
+			Households:         households.NewStore(pool),
+			CORSAllowedOrigins: cfg.CORSAllowedOrigins,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
