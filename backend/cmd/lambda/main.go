@@ -14,7 +14,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 
+	"github.com/stroem/shopping-list/backend/internal/auth"
 	"github.com/stroem/shopping-list/backend/internal/db"
+	"github.com/stroem/shopping-list/backend/internal/households"
 	"github.com/stroem/shopping-list/backend/internal/router"
 	"github.com/stroem/shopping-list/backend/internal/suggest"
 )
@@ -38,6 +40,24 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 
-	adapter := httpadapter.NewV2(router.New(router.Deps{DB: pool, Suggest: suggest.New(pool)}))
+	verifier := auth.TokenVerifier(auth.NewDenyVerifier())
+	if aud := os.Getenv("OIDC_AUDIENCE"); aud != "" {
+		issuer := os.Getenv("OIDC_ISSUER")
+		if issuer == "" {
+			issuer = "https://accounts.google.com"
+		}
+		v, err := auth.NewOIDCVerifier(initCtx, issuer, aud)
+		if err != nil {
+			log.Fatalf("oidc: %v", err)
+		}
+		verifier = v
+	}
+
+	adapter := httpadapter.NewV2(router.New(router.Deps{
+		DB:             pool,
+		Suggest:        suggest.New(pool),
+		AuthMiddleware: auth.Middleware(verifier, auth.NewUserStore(pool)),
+		Households:     households.NewStore(pool),
+	}))
 	lambda.Start(adapter.ProxyWithContext)
 }
