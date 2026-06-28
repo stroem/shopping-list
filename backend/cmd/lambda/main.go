@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 
+	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
 	"github.com/stroem/shopping-list/backend/internal/logging"
 	"github.com/stroem/shopping-list/backend/internal/router"
@@ -44,6 +45,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	adapter := httpadapter.NewV2(router.New(router.Deps{DB: pool, Suggest: suggest.New(pool)}))
+	// Lambda skips config.Load; read the CORS origins straight from env, parsed
+	// the same way so cmd/api and cmd/lambda behave identically.
+	corsOrigins := config.ParseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	adapter := httpadapter.NewV2(router.New(router.Deps{DB: pool, Suggest: suggest.New(pool), CORSAllowedOrigins: corsOrigins}))
 	lambda.Start(adapter.ProxyWithContext)
 }
