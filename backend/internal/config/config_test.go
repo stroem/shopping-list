@@ -27,3 +27,27 @@ func TestLoadDefaultsPort(t *testing.T) {
 		t.Fatalf("DatabaseURL = %q", cfg.DatabaseURL)
 	}
 }
+
+func TestLoadDefaultsLogLevel(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("LOG_LEVEL", "")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.LogLevel != "info" {
+		t.Fatalf("LogLevel = %q, want info", cfg.LogLevel)
+	}
+}
+
+func TestLoadReadsLogLevel(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("LOG_LEVEL", "debug")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Fatalf("LogLevel = %q, want debug", cfg.LogLevel)
+	}
+}
