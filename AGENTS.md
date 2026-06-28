@@ -44,12 +44,18 @@ docs/superpowers/   specs + plans (design history, deep reference).
 
 ## Build, run, test
 
+A root **`justfile`** wraps the common tasks (`just` to list): `just run` (API),
+`just db` / `just db-stop` (local Postgres, prints the URL), `just migrate`,
+`just test` (Go + Flutter), `just app-run`. **`cmd/api` requires `DATABASE_URL`**
+— use `just db` to get one locally.
+
 **Backend (Go), from `backend/`:**
 
 - `go build ./...` · `go test ./...`
-- `go run ./cmd/api` — local API on `:8080`, reads `DATABASE_URL` (local or Neon).
+- `go run ./cmd/api` — local API on `:8080`, **requires `DATABASE_URL`**; `GET /healthz` pings the DB (200 JSON / 503).
+- `go run ./cmd/migrate up|down` — apply/revert migrations (reads `DATABASE_URL`).
 - `go run ./cmd/seed` — import `data/food/*` into the catalog + EAN tables (one-shot, local).
-- Migrations via `golang-migrate` (the `migrations/` dir).
+- Migrations via `golang-migrate` (embedded from the `migrations/` dir).
 
 **App (Flutter), from `app/`:**
 
