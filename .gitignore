@@ -21,6 +21,9 @@ coverage.*
 **/*.g.dart.bak
 .packages
 
+# fvm
+.fvm/
+
 # AWS / IaC
 /infra/.terraform/
 *.tfstate
