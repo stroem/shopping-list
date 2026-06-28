@@ -88,3 +88,33 @@ func TestLoadInvalidRequestTimeoutFallsBackToDefault(t *testing.T) {
 		t.Fatalf("RequestTimeout = %v, want 5s fallback", cfg.RequestTimeout)
 	}
 }
+
+func TestLoadDefaultsCORSAllowedOriginsEmpty(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.CORSAllowedOrigins) != 0 {
+		t.Fatalf("CORSAllowedOrigins = %v, want empty", cfg.CORSAllowedOrigins)
+	}
+}
+
+func TestLoadParsesCORSAllowedOrigins(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("CORS_ALLOWED_ORIGINS", " https://app.example.com , ,https://admin.example.com ")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"https://app.example.com", "https://admin.example.com"}
+	if len(cfg.CORSAllowedOrigins) != len(want) {
+		t.Fatalf("CORSAllowedOrigins = %v, want %v", cfg.CORSAllowedOrigins, want)
+	}
+	for i, o := range want {
+		if cfg.CORSAllowedOrigins[i] != o {
+			t.Fatalf("CORSAllowedOrigins[%d] = %q, want %q", i, cfg.CORSAllowedOrigins[i], o)
+		}
+	}
+}
