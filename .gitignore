@@ -1,0 +1,33 @@
+# Downloaded source data — never committed.
+# Consumed once by backend/cmd/seed to populate the catalog + EAN tables.
+data/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Go
+/backend/bin/
+*.test
+*.out
+coverage.*
+
+# Flutter / Dart
+/app/.dart_tool/
+/app/build/
+/app/.flutter-plugins
+/app/.flutter-plugins-dependencies
+**/*.g.dart.bak
+.packages
+
+# AWS / IaC
+/infra/.terraform/
+*.tfstate
+*.tfstate.*
+.aws-sam/
+samconfig.toml
+
+# Editor / OS
+.DS_Store
+*.swp
