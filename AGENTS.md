@@ -100,9 +100,13 @@ See the design spec for the field-level schema.
   (cost). Push is a future ticket.
 - **Idempotency:** client-generated UUIDs + `Idempotency-Key` so double-taps and
   outbox replays never duplicate.
-- **Sharing / auth:** a household is a shared-secret UUID (join code) + per-device
-  `X-Device-Id`. **No OAuth in v1.** Everything is household-scoped; cross-household
-  access returns **404** (no existence leak).
+- **Sharing / auth:** sign-in is **Google / OIDC** — the backend verifies an ID
+  token (`Authorization: Bearer`, configurable issuer via `OIDC_ISSUER` /
+  `OIDC_AUDIENCE`) and keys a person by `(issuer, subject)`, auto-creating the
+  `users` row on first request. People **share a household via an invite code**
+  (`households.invite_code`, carried by a shareable link). Everything is
+  household-scoped; cross-household access returns **404** (no existence leak).
+  `X-Device-Id` is retained only for future device/sync use, not identity.
 
 ## The `data/` directory
 

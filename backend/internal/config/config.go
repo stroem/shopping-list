@@ -18,6 +18,8 @@ type Config struct {
 	Port           string        // listen port, default "8080"
 	LogLevel       string        // slog level: debug|info|warn|error, default "info"
 	RequestTimeout time.Duration // per-request deadline, default 5s (REQUEST_TIMEOUT)
+	OIDCIssuer     string        // OIDC issuer, default https://accounts.google.com
+	OIDCAudience   string        // OIDC audience (Google client id); empty ⇒ auth disabled
 	// CORSAllowedOrigins lists the cross-origin web origins permitted to call the
 	// API, parsed from CORS_ALLOWED_ORIGINS (comma-separated). Empty means the
 	// router applies its safe local-dev default; set it in production.
@@ -42,6 +44,11 @@ func Load() (Config, error) {
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = "info"
 	}
+	cfg.OIDCIssuer = os.Getenv("OIDC_ISSUER")
+	if cfg.OIDCIssuer == "" {
+		cfg.OIDCIssuer = "https://accounts.google.com"
+	}
+	cfg.OIDCAudience = os.Getenv("OIDC_AUDIENCE")
 	return cfg, nil
 }
 

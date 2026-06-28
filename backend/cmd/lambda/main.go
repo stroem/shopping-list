@@ -14,8 +14,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 
+	"github.com/stroem/shopping-list/backend/internal/auth"
 	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
+	"github.com/stroem/shopping-list/backend/internal/households"
 	"github.com/stroem/shopping-list/backend/internal/logging"
 	"github.com/stroem/shopping-list/backend/internal/router"
 	"github.com/stroem/shopping-list/backend/internal/suggest"
@@ -45,9 +47,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	verifier := auth.TokenVerifier(auth.NewDenyVerifier())
+	if aud := os.Getenv("OIDC_AUDIENCE"); aud != "" {
+		issuer := os.Getenv("OIDC_ISSUER")
+		if issuer == "" {
+			issuer = "https://accounts.google.com"
+		}
+		v, err := auth.NewOIDCVerifier(initCtx, issuer, aud)
+		if err != nil {
+			slog.Error("oidc", "err", err)
+			os.Exit(1)
+		}
+		verifier = v
+	}
+
 	// Lambda skips config.Load; read the CORS origins straight from env, parsed
 	// the same way so cmd/api and cmd/lambda behave identically.
 	corsOrigins := config.ParseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
-	adapter := httpadapter.NewV2(router.New(router.Deps{DB: pool, Suggest: suggest.New(pool), CORSAllowedOrigins: corsOrigins}))
+	adapter := httpadapter.NewV2(router.New(router.Deps{
+		DB:                 pool,
+		Suggest:            suggest.New(pool),
+		AuthMiddleware:     auth.Middleware(verifier, auth.NewUserStore(pool)),
+		Households:         households.NewStore(pool),
+		CORSAllowedOrigins: corsOrigins,
+	}))
 	lambda.Start(adapter.ProxyWithContext)
 }

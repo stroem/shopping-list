@@ -12,8 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/stroem/shopping-list/backend/internal/auth"
 	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
+	"github.com/stroem/shopping-list/backend/internal/households"
 	"github.com/stroem/shopping-list/backend/internal/logging"
 	"github.com/stroem/shopping-list/backend/internal/router"
 	"github.com/stroem/shopping-list/backend/internal/suggest"
@@ -41,9 +43,17 @@ func main() {
 	}
 	defer pool.Close()
 
+	verifier := buildVerifier(ctx, cfg)
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           router.New(router.Deps{DB: pool, Suggest: suggest.New(pool), RequestTimeout: cfg.RequestTimeout, CORSAllowedOrigins: cfg.CORSAllowedOrigins}),
+		Addr: ":" + cfg.Port,
+		Handler: router.New(router.Deps{
+			DB:                 pool,
+			Suggest:            suggest.New(pool),
+			RequestTimeout:     cfg.RequestTimeout,
+			AuthMiddleware:     auth.Middleware(verifier, auth.NewUserStore(pool)),
+			Households:         households.NewStore(pool),
+			CORSAllowedOrigins: cfg.CORSAllowedOrigins,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -61,4 +71,19 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "err", err)
 	}
+}
+
+// buildVerifier returns an OIDC verifier when an audience is configured, else a
+// deny verifier so the server still boots locally (auth endpoints return 401).
+func buildVerifier(ctx context.Context, cfg config.Config) auth.TokenVerifier {
+	if cfg.OIDCAudience == "" {
+		slog.Warn("OIDC_AUDIENCE unset — auth disabled (auth endpoints return 401)")
+		return auth.NewDenyVerifier()
+	}
+	v, err := auth.NewOIDCVerifier(ctx, cfg.OIDCIssuer, cfg.OIDCAudience)
+	if err != nil {
+		slog.Error("oidc", "err", err)
+		os.Exit(1)
+	}
+	return v
 }

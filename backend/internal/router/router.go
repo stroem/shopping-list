@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/stroem/shopping-list/backend/internal/auth"
 	"github.com/stroem/shopping-list/backend/internal/web"
 )
 
@@ -33,6 +34,8 @@ type Deps struct {
 	// RequestTimeout bounds every request; a non-positive value falls back to
 	// web.DefaultRequestTimeout so zero-value Deps stay safe and testable.
 	RequestTimeout time.Duration
+	AuthMiddleware func(http.Handler) http.Handler
+	Households     HouseholdStore
 	// CORSAllowedOrigins are the cross-origin web origins allowed to call the API.
 	// Empty falls back to defaultCORSOrigins (local dev only), never "*".
 	CORSAllowedOrigins []string
@@ -61,6 +64,9 @@ func New(deps Deps) http.Handler {
 	r.Use(web.Recoverer)
 	r.Use(web.Timeout(deps.RequestTimeout))
 	r.Use(web.DeviceIDMiddleware)
+	if deps.AuthMiddleware != nil {
+		r.Use(deps.AuthMiddleware)
+	}
 
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		web.Error(w, http.StatusNotFound, "not found")
@@ -73,6 +79,14 @@ func New(deps Deps) http.Handler {
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Get("/suggest", suggestHandler(deps.Suggest))
+		if deps.Households != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireAuth)
+				r.Post("/households", createHousehold(deps.Households))
+				r.Post("/households/join", joinHousehold(deps.Households))
+				r.Get("/households/{id}", getHousehold(deps.Households))
+			})
+		}
 	})
 	return r
 }
