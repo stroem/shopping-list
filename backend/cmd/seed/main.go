@@ -79,6 +79,74 @@ func seedLivsmedelsverket(args []string) error {
 	return nil
 }
 
+// seedStats holds the running counts produced while streaming OFF JSONL.
+type seedStats struct {
+	Parsed    int
+	Skipped   int
+	Malformed int
+	Inserted  int
+	Updated   int
+}
+
+// streamOFF reads Open Food Facts JSONL from r, batches parsed rows up to
+// batchSize, and flushes each full batch (and the remainder at EOF) through
+// upsert. A malformed line (ParseOFFLine error) or a skippable line (nameless/
+// codeless) is counted and the stream continues — one bad line never aborts.
+// It uses bufio.Reader (not Scanner) so lines above Scanner's 64 KB cap stream
+// fine. Returns the accumulated stats and the first read or upsert error.
+func streamOFF(r io.Reader, batchSize int, upsert func(batch []catalog.EanRow) (ins, upd int, err error)) (seedStats, error) {
+	var (
+		stats seedStats
+		batch []catalog.EanRow
+	)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		ins, upd, err := upsert(batch)
+		if err != nil {
+			return err
+		}
+		stats.Inserted += ins
+		stats.Updated += upd
+		batch = batch[:0]
+		log.Printf("openfoodfacts: progress — %d parsed, %d inserted, %d updated", stats.Parsed, stats.Inserted, stats.Updated)
+		return nil
+	}
+
+	br := bufio.NewReaderSize(r, 1<<20)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			row, ok, perr := catalog.ParseOFFLine(line)
+			switch {
+			case perr != nil:
+				stats.Malformed++
+			case !ok:
+				stats.Skipped++
+			default:
+				stats.Parsed++
+				batch = append(batch, row)
+				if len(batch) >= batchSize {
+					if ferr := flush(); ferr != nil {
+						return stats, ferr
+					}
+				}
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return stats, err
+		}
+	}
+	if ferr := flush(); ferr != nil {
+		return stats, ferr
+	}
+	return stats, nil
+}
+
 func seedOpenFoodFacts(args []string) error {
 	fs := flag.NewFlagSet("openfoodfacts", flag.ExitOnError)
 	file := fs.String("file", "../data/food/swedish_food_products.jsonl", "path to open food facts jsonl")
@@ -105,58 +173,14 @@ func seedOpenFoodFacts(args []string) error {
 	}
 	defer pool.Close()
 
-	// bufio.Reader (not Scanner): some OFF lines exceed Scanner's 64 KB cap.
-	r := bufio.NewReaderSize(f, 1<<20)
-	var (
-		parsed, skipped, malformed, inserted, updated int
-		batch                                         []catalog.EanRow
-	)
-	flush := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-		ins, upd, err := catalog.UpsertEAN(ctx, pool, batch)
-		if err != nil {
-			return err
-		}
-		inserted += ins
-		updated += upd
-		batch = batch[:0]
-		log.Printf("openfoodfacts: progress — %d parsed, %d inserted, %d updated", parsed, inserted, updated)
-		return nil
-	}
-
-	for {
-		line, err := r.ReadBytes('\n')
-		if len(line) > 0 {
-			row, ok, perr := catalog.ParseOFFLine(line)
-			switch {
-			case perr != nil:
-				malformed++
-			case !ok:
-				skipped++
-			default:
-				parsed++
-				batch = append(batch, row)
-				if len(batch) >= *batchSize {
-					if ferr := flush(); ferr != nil {
-						return ferr
-					}
-				}
-			}
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("read %s: %w", *file, err)
-		}
-	}
-	if ferr := flush(); ferr != nil {
-		return ferr
+	stats, err := streamOFF(f, *batchSize, func(batch []catalog.EanRow) (int, int, error) {
+		return catalog.UpsertEAN(ctx, pool, batch)
+	})
+	if err != nil {
+		return fmt.Errorf("read %s: %w", *file, err)
 	}
 
 	log.Printf("openfoodfacts: done — %d parsed, %d skipped, %d malformed, %d inserted, %d updated",
-		parsed, skipped, malformed, inserted, updated)
+		stats.Parsed, stats.Skipped, stats.Malformed, stats.Inserted, stats.Updated)
 	return nil
 }
