@@ -30,8 +30,9 @@ func migrateURL(databaseURL string) string {
 }
 
 // ErrNoMigrations is returned by Version when the database has no applied
-// migration version. It wraps golang-migrate's ErrNilVersion so callers
-// (cmd/migrate) need not import the migrate package to detect the condition.
+// migration version. It stands in for golang-migrate's ErrNilVersion so
+// callers (cmd/migrate) need not import the migrate package to detect the
+// condition.
 var ErrNoMigrations = errors.New("no migrations applied")
 
 // newMigrator builds a *migrate.Migrate from the embedded migrations and a

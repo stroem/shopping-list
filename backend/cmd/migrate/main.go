@@ -89,14 +89,23 @@ func run(args []string, stdout, stderr io.Writer, stdin io.Reader, isTTY bool, m
 
 	switch cmd {
 	case "up":
+		if !noArgs(stderr, "up", arg) {
+			return 2
+		}
 		return exec(stdout, stderr, "migrations applied", m.Up)
 	case "down":
+		if !noArgs(stderr, "down", arg) {
+			return 2
+		}
 		if !confirm("revert ALL migrations", stdout, stdin, isTTY, yes) {
 			fmt.Fprintln(stderr, "aborted")
 			return 1
 		}
 		return exec(stdout, stderr, "migrations reverted", m.DownAll)
 	case "version":
+		if !noArgs(stderr, "version", arg) {
+			return 2
+		}
 		return printVersion(stdout, stderr, m)
 	case "force":
 		v, ok := intArg(stderr, "force", arg)
@@ -179,6 +188,17 @@ func exec(stdout, stderr io.Writer, okMsg string, op func() error) int {
 	}
 	fmt.Fprintln(stdout, okMsg)
 	return 0
+}
+
+// noArgs returns true (proceed) when no trailing positional args were supplied.
+// When len(arg) != 0 it prints a usage error to stderr and returns false so
+// the caller can return exit code 2.
+func noArgs(stderr io.Writer, cmd string, arg []string) bool {
+	if len(arg) != 0 {
+		fmt.Fprintf(stderr, "%s: unexpected argument(s)\n", cmd)
+		return false
+	}
+	return true
 }
 
 // intArg parses a single required integer argument for cmd.

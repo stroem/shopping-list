@@ -21,9 +21,9 @@ func (f *fakeMigrator) Version() (uint, bool, bool, error) {
 	f.calls = append(f.calls, "Version")
 	return f.version, f.dirty, f.applied, f.err
 }
-func (f *fakeMigrator) Force(v int) error  { f.calls = append(f.calls, "Force"); return f.err }
-func (f *fakeMigrator) Steps(n int) error  { f.calls = append(f.calls, "Steps"); return f.err }
-func (f *fakeMigrator) Goto(v uint) error  { f.calls = append(f.calls, "Goto"); return f.err }
+func (f *fakeMigrator) Force(v int) error { f.calls = append(f.calls, "Force"); return f.err }
+func (f *fakeMigrator) Steps(n int) error { f.calls = append(f.calls, "Steps"); return f.err }
+func (f *fakeMigrator) Goto(v uint) error { f.calls = append(f.calls, "Goto"); return f.err }
 
 func runWith(args []string, isTTY bool, stdin string, m migrator) (int, string, string) {
 	var out, errOut bytes.Buffer
@@ -165,6 +165,67 @@ func TestRuntimeErrorExitsOne(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "oops") {
 		t.Fatalf("expected error on stderr, got %q", errOut)
+	}
+}
+
+// --- fix #1 / #2: extra positional args for up/down/version should exit 2 ---
+
+func TestUpRejectsExtraArgs(t *testing.T) {
+	m := &fakeMigrator{}
+	code, _, _ := runWith([]string{"up", "junk"}, false, "", m)
+	if code != 2 {
+		t.Fatalf("up junk: code=%d, want 2", code)
+	}
+	if len(m.calls) != 0 {
+		t.Fatalf("up junk: migrator must not be called, got %v", m.calls)
+	}
+}
+
+func TestVersionRejectsExtraArgs(t *testing.T) {
+	m := &fakeMigrator{}
+	code, _, _ := runWith([]string{"version", "junk"}, false, "", m)
+	if code != 2 {
+		t.Fatalf("version junk: code=%d, want 2", code)
+	}
+	if len(m.calls) != 0 {
+		t.Fatalf("version junk: migrator must not be called, got %v", m.calls)
+	}
+}
+
+func TestDownRejectsExtraArgs(t *testing.T) {
+	m := &fakeMigrator{}
+	code, _, _ := runWith([]string{"down", "junk"}, false, "", m)
+	if code != 2 {
+		t.Fatalf("down junk: code=%d, want 2", code)
+	}
+	if len(m.calls) != 0 {
+		t.Fatalf("down junk: migrator must not be called, got %v", m.calls)
+	}
+}
+
+// --- fix #3: coverage gaps ---
+
+func TestStepsNegativeTTYNo(t *testing.T) {
+	m := &fakeMigrator{}
+	code, _, _ := runWith([]string{"steps", "-1"}, true, "n\n", m)
+	if code == 0 {
+		t.Fatalf("declined steps -1 should be non-zero, got 0")
+	}
+	for _, c := range m.calls {
+		if c == "Steps" {
+			t.Fatalf("Steps must not run when declined; calls=%v", m.calls)
+		}
+	}
+}
+
+func TestHelpFlagExitsZero(t *testing.T) {
+	m := &fakeMigrator{}
+	code, out, _ := runWith([]string{"-h"}, false, "", m)
+	if code != 0 {
+		t.Fatalf("-h: code=%d, want 0", code)
+	}
+	if !strings.Contains(out, "usage") {
+		t.Fatalf("-h: expected usage on stdout, got %q", out)
 	}
 }
 
