@@ -53,6 +53,8 @@ func main() {
 			AuthMiddleware:     auth.Middleware(verifier, auth.NewUserStore(pool)),
 			Households:         households.NewStore(pool),
 			CORSAllowedOrigins: cfg.CORSAllowedOrigins,
+			SuggestRateLimit:   cfg.SuggestRateLimit,
+			SuggestRateWindow:  cfg.SuggestRateWindow,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
