@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stroem/shopping-list/backend/internal/config"
 )
@@ -49,5 +50,41 @@ func TestLoadReadsLogLevel(t *testing.T) {
 	}
 	if cfg.LogLevel != "debug" {
 		t.Fatalf("LogLevel = %q, want debug", cfg.LogLevel)
+	}
+}
+
+func TestLoadDefaultsRequestTimeout(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("REQUEST_TIMEOUT", "")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RequestTimeout != 5*time.Second {
+		t.Fatalf("RequestTimeout = %v, want 5s", cfg.RequestTimeout)
+	}
+}
+
+func TestLoadReadsRequestTimeout(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("REQUEST_TIMEOUT", "250ms")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RequestTimeout != 250*time.Millisecond {
+		t.Fatalf("RequestTimeout = %v, want 250ms", cfg.RequestTimeout)
+	}
+}
+
+func TestLoadInvalidRequestTimeoutFallsBackToDefault(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("REQUEST_TIMEOUT", "not-a-duration")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RequestTimeout != 5*time.Second {
+		t.Fatalf("RequestTimeout = %v, want 5s fallback", cfg.RequestTimeout)
 	}
 }
