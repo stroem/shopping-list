@@ -24,6 +24,9 @@ func TestAisleForCategories(t *testing.T) {
 		{"real cream stays dairy", []string{"en:creams"}, intp(2)},
 		{"oil no longer matches boiled", []string{"en:boiled-vegetables"}, intp(1)},
 		{"compound beats competing dairy tag", []string{"en:dairies", "en:ice-creams"}, intp(7)},
+		{"potatoes are produce", []string{"en:potatoes"}, intp(1)},
+		{"sweet potato is produce not candy", []string{"en:sweet-potatoes"}, intp(1)},
+		{"fishes are seafood", []string{"en:fishes"}, intp(4)},
 	}
 	for _, c := range cases {
 		got := AisleForCategories(c.tags)

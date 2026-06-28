@@ -13,21 +13,31 @@ var categoryGroups = []aisleGroup{
 	{2, []string{"dairies", "dairy", "milk", "cheese", "yogurt", "yoghurt", "butter", "cream", "egg"}},
 	{1, []string{"fruit", "vegetable", "legume", "salad", "potato", "berries", "mushroom", "eggplant"}},
 	{5, []string{"bread", "bakery", "viennoiserie", "baguette", "toast", "crackers"}},
-	{7, []string{"frozen", "ice-cream", "ice-creams"}},
+	{7, []string{"frozen", "ice-cream"}},
 	{8, []string{"beverage", "water", "juice", "soda", "coffee", "tea", "drink", "wine", "beer", "alcoholic", "spirit"}},
 	{9, []string{"chocolate", "candy", "candies", "snack", "biscuit", "chips", "confectioner", "sweet", "dessert"}},
 	{6, []string{"pasta", "rice", "cereal", "flour", "condiment", "sauce", "canned", "spice", "oil", "groceries", "breakfast", "legumes-and-their-products"}},
 }
 
-// singular maps a word to a crude singular form so plural and singular tag
-// segments compare equal: "dairies"->"dairy", "creams"->"cream", "eggs"->"egg".
+// singular maps a word to a normalised singular form so plural and singular tag
+// segments compare equal: "dairies"->"dairy", "creams"->"cream", "eggs"->"egg",
+// "potatoes"->"potato" (-oes→-o), "fishes"->"fish" (-shes→-sh).
 // Applied to a hyphenated compound it only affects the trailing word
 // ("ice-creams"->"ice-cream"), which is the intended behavior.
 func singular(w string) string {
-	if strings.HasSuffix(w, "ies") {
+	switch {
+	case strings.HasSuffix(w, "ies") && len(w) > 4:
 		return w[:len(w)-3] + "y"
+	case strings.HasSuffix(w, "oes") && len(w) > 4:
+		return w[:len(w)-2]
+	case (strings.HasSuffix(w, "shes") || strings.HasSuffix(w, "ches") ||
+		strings.HasSuffix(w, "xes") || strings.HasSuffix(w, "sses")) && len(w) > 4:
+		return w[:len(w)-2]
+	case strings.HasSuffix(w, "s") && !strings.HasSuffix(w, "ss"):
+		return w[:len(w)-1]
+	default:
+		return w
 	}
-	return strings.TrimSuffix(w, "s")
 }
 
 // tagUnits normalizes an OFF category tag into its match units: the
