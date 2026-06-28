@@ -39,6 +39,13 @@ type Deps struct {
 	// CORSAllowedOrigins are the cross-origin web origins allowed to call the API.
 	// Empty falls back to defaultCORSOrigins (local dev only), never "*".
 	CORSAllowedOrigins []string
+	// SuggestRateLimit caps /v1/suggest requests per client per
+	// SuggestRateWindow; a non-positive value falls back to a sane default so
+	// zero-value Deps stay safe and testable.
+	SuggestRateLimit int
+	// SuggestRateWindow is the sliding window for SuggestRateLimit; non-positive
+	// falls back to the default.
+	SuggestRateWindow time.Duration
 }
 
 // New returns the application's HTTP handler.
@@ -78,6 +85,10 @@ func New(deps Deps) http.Handler {
 	r.Get("/healthz", healthz(deps.DB))
 
 	r.Route("/v1", func(r chi.Router) {
+		// Rate-limit the public /v1 group per client. It runs after the global
+		// DeviceIDMiddleware above, so web.DeviceID(ctx) is populated for keying.
+		// healthz lives outside /v1 and is never limited (liveness must not 429).
+		r.Use(suggestRateLimiter(deps.SuggestRateLimit, deps.SuggestRateWindow))
 		r.Get("/suggest", suggestHandler(deps.Suggest))
 		if deps.Households != nil {
 			r.Group(func(r chi.Router) {
