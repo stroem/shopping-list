@@ -27,7 +27,7 @@ type Deps struct {
 func New(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Recoverer)
+	r.Use(web.Recoverer)
 	r.Use(web.DeviceIDMiddleware)
 
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {

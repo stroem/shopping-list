@@ -28,6 +28,28 @@ func TestErrorWritesJSON(t *testing.T) {
 	}
 }
 
+func TestRecovererReturnsJSON500(t *testing.T) {
+	h := web.Recoverer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("content-type = %q", ct)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body not json: %v", err)
+	}
+	if body["error"] == "" {
+		t.Fatalf("expected an error message, got %v", body)
+	}
+}
+
 func TestDeviceIDMiddlewarePopulatesContext(t *testing.T) {
 	var got string
 	h := web.DeviceIDMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
