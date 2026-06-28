@@ -93,6 +93,14 @@ func TestParseOFFLine_UnknownAndFallback(t *testing.T) {
 	}
 }
 
+func TestParseOFFLine_SkipNoCode(t *testing.T) {
+	// A named product with an empty code must be skipped — ean is the PK.
+	_, ok, err := ParseOFFLine([]byte(`{"code":"  ","product_name":"Has name no code"}`))
+	if err != nil || ok {
+		t.Fatalf("ok=%v err=%v, want false/nil (skip empty code)", ok, err)
+	}
+}
+
 func TestParseOFFLine_Malformed(t *testing.T) {
 	if _, _, err := ParseOFFLine([]byte(`{not json`)); err == nil {
 		t.Fatal("want error on malformed JSON")

@@ -108,12 +108,16 @@ func ParseOFFLine(line []byte) (EanRow, bool, error) {
 	if name == "" {
 		name = strings.TrimSpace(p.ProductName)
 	}
-	if name == "" {
+	// Skip rows missing a name or a code: ean is the ean_mappings primary key,
+	// so an empty code would silently collapse every code-less product onto one
+	// "" row (last-writer-wins) instead of failing.
+	ean := strings.TrimSpace(p.Code)
+	if name == "" || ean == "" {
 		return EanRow{}, false, nil
 	}
 
 	row := EanRow{
-		EAN:          strings.TrimSpace(p.Code),
+		EAN:          ean,
 		Name:         name,
 		Brand:        strp(p.Brands),
 		ImageURL:     strp(firstNonEmpty(p.ImageURL, p.ImageSmallURL)),
