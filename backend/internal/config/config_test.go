@@ -89,6 +89,54 @@ func TestLoadInvalidRequestTimeoutFallsBackToDefault(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsSuggestRateLimit(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("SUGGEST_RATE_LIMIT", "")
+	t.Setenv("SUGGEST_RATE_WINDOW", "")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SuggestRateLimit != 60 {
+		t.Fatalf("SuggestRateLimit = %d, want 60", cfg.SuggestRateLimit)
+	}
+	if cfg.SuggestRateWindow != time.Minute {
+		t.Fatalf("SuggestRateWindow = %v, want 1m", cfg.SuggestRateWindow)
+	}
+}
+
+func TestLoadReadsSuggestRateLimit(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("SUGGEST_RATE_LIMIT", "120")
+	t.Setenv("SUGGEST_RATE_WINDOW", "30s")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SuggestRateLimit != 120 {
+		t.Fatalf("SuggestRateLimit = %d, want 120", cfg.SuggestRateLimit)
+	}
+	if cfg.SuggestRateWindow != 30*time.Second {
+		t.Fatalf("SuggestRateWindow = %v, want 30s", cfg.SuggestRateWindow)
+	}
+}
+
+func TestLoadInvalidSuggestRateLimitFallsBackToDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("SUGGEST_RATE_LIMIT", "nope")
+	t.Setenv("SUGGEST_RATE_WINDOW", "not-a-duration")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SuggestRateLimit != 60 {
+		t.Fatalf("SuggestRateLimit = %d, want 60 fallback", cfg.SuggestRateLimit)
+	}
+	if cfg.SuggestRateWindow != time.Minute {
+		t.Fatalf("SuggestRateWindow = %v, want 1m fallback", cfg.SuggestRateWindow)
+	}
+}
+
 func TestLoadDefaultsCORSAllowedOriginsEmpty(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost/db")
 	t.Setenv("CORS_ALLOWED_ORIGINS", "")
