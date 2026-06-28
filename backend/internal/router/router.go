@@ -5,6 +5,7 @@ package router
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -21,8 +22,11 @@ type Pinger interface {
 
 // Deps are the runtime dependencies the router wires into handlers.
 type Deps struct {
-	DB             Pinger
-	Suggest        Suggester
+	DB      Pinger
+	Suggest Suggester
+	// RequestTimeout bounds every request; a non-positive value falls back to
+	// web.DefaultRequestTimeout so zero-value Deps stay safe and testable.
+	RequestTimeout time.Duration
 	AuthMiddleware func(http.Handler) http.Handler
 	Households     HouseholdStore
 }
@@ -32,6 +36,7 @@ func New(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(web.Recoverer)
+	r.Use(web.Timeout(deps.RequestTimeout))
 	r.Use(web.DeviceIDMiddleware)
 	if deps.AuthMiddleware != nil {
 		r.Use(deps.AuthMiddleware)

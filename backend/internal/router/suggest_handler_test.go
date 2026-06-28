@@ -1,9 +1,11 @@
 package router_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -75,5 +77,31 @@ func TestSuggestHandler_ServiceErrorIs500(t *testing.T) {
 	rec := doSuggest(t, &fakeSuggester{err: errors.New("boom")}, "/v1/suggest?q=mj", "")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+}
+
+func TestSuggestHandler_LogsUnderlyingError(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	rec := doSuggest(t, &fakeSuggester{err: errors.New("db boom")}, "/v1/suggest?q=mj", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if body := rec.Body.String(); bytes.Contains([]byte(body), []byte("db boom")) {
+		t.Fatalf("internal error leaked to client: %s", body)
+	}
+
+	var log map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &log); err != nil {
+		t.Fatalf("log output is not JSON: %v\n%s", err, buf.String())
+	}
+	if log["err"] != "db boom" {
+		t.Errorf("logged err = %v, want %q", log["err"], "db boom")
+	}
+	if id, ok := log["request_id"].(string); !ok || id == "" {
+		t.Errorf("request_id = %v, want a non-empty string", log["request_id"])
 	}
 }

@@ -25,7 +25,7 @@ func suggestHandler(s Suggester) http.HandlerFunc {
 
 		results, err := s.Suggest(r.Context(), deviceID, q, limit)
 		if err != nil {
-			web.Error(w, http.StatusInternalServerError, "suggest failed")
+			web.ServerError(w, r, err, "suggest failed")
 			return
 		}
 		if results == nil {
