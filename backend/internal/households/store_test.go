@@ -74,10 +74,14 @@ func TestHouseholdCreateJoinGet(t *testing.T) {
 		t.Fatalf("userA household = %q want %q err=%v", aHH, hh.ID, err)
 	}
 
-	// userB joins by code → same household.
+	// userB joins by code → same household, and the membership is persisted.
 	joined, err := s.JoinByCode(ctx, userB, hh.InviteCode)
 	if err != nil || joined.ID != hh.ID {
 		t.Fatalf("join: %+v err=%v", joined, err)
+	}
+	var bHH string
+	if err := pool.QueryRow(ctx, `SELECT household_id::text FROM users WHERE id=$1::uuid`, userB).Scan(&bHH); err != nil || bHH != hh.ID {
+		t.Fatalf("userB household = %q want %q err=%v (join did not persist)", bHH, hh.ID, err)
 	}
 
 	// Bad code → ErrNotFound.

@@ -52,9 +52,17 @@ func (s *Store) Create(ctx context.Context, userID string, name *string) (Househ
 }
 
 // JoinByCode associates the caller with the household for invite code, if any.
+// Lookup and membership update run in one transaction (parity with Create) so a
+// household soft-deleted mid-call can't leave a dangling membership.
 func (s *Store) JoinByCode(ctx context.Context, userID, code string) (Household, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Household{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	var h Household
-	err := s.db.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`SELECT id::text, name, invite_code FROM households WHERE invite_code = $1 AND deleted_at IS NULL`, code,
 	).Scan(&h.ID, &h.Name, &h.InviteCode)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -63,10 +71,13 @@ func (s *Store) JoinByCode(ctx context.Context, userID, code string) (Household,
 	if err != nil {
 		return Household{}, fmt.Errorf("find household: %w", err)
 	}
-	if _, err := s.db.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE users SET household_id = $1::uuid, updated_at = now() WHERE id = $2::uuid`, h.ID, userID,
 	); err != nil {
 		return Household{}, fmt.Errorf("join household: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Household{}, err
 	}
 	return h, nil
 }

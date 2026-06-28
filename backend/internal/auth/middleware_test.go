@@ -86,6 +86,20 @@ func TestMiddleware_ValidToken_SetsPrincipalAndUpserts(t *testing.T) {
 	}
 }
 
+func TestMiddleware_DenyVerifier_RejectsAnyToken(t *testing.T) {
+	// The deny verifier (used when OIDC_AUDIENCE is unset) must 401 any bearer
+	// token, while an absent token still passes — the local-dev boot baseline.
+	mw := auth.Middleware(auth.NewDenyVerifier(), &fakeStore{})
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	if rec := serve(mw, inner, "Bearer anything"); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("deny+token code = %d, want 401", rec.Code)
+	}
+	if rec := serve(mw, inner, ""); rec.Code != http.StatusOK {
+		t.Fatalf("deny+no-token code = %d, want 200 (open)", rec.Code)
+	}
+}
+
 func TestRequireAuth(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 
