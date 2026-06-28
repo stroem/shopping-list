@@ -2,7 +2,6 @@ package db_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -39,10 +38,8 @@ func TestMigrateUpDownRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("connection string: %v", err)
 	}
-	migrateURL := "pgx5://" + strings.TrimPrefix(pgURL, "postgres://")
-
 	// Up
-	if err := db.Migrate(ctx, migrateURL); err != nil {
+	if err := db.Migrate(ctx, pgURL); err != nil {
 		t.Fatalf("migrate up: %v", err)
 	}
 	if got := countTables(t, ctx, pgURL, wantTables); got != len(wantTables) {
@@ -50,7 +47,7 @@ func TestMigrateUpDownRoundTrip(t *testing.T) {
 	}
 
 	// Down
-	if err := db.MigrateDown(migrateURL); err != nil {
+	if err := db.MigrateDown(pgURL); err != nil {
 		t.Fatalf("migrate down: %v", err)
 	}
 	if got := countTables(t, ctx, pgURL, wantTables); got != 0 {
