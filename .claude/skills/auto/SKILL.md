@@ -46,9 +46,22 @@ destructive, irreversible, or a merge to `main` without the merge prompt.
 ## Phase 1 — Entry / issue selection
 
 - `/auto <N>` → use issue #N.
-- `/auto` (no arg) → `gh issue list --repo stroem/shopping-list --state open`, then
-  **recommend one to take** (rank by labels, age, readiness) and **confirm with
-  the user before taking it**.
+- `/auto` (no arg) → **milestones are the build order — check them first.** List
+  open milestones in order and prefer an issue from the **earliest milestone that
+  still has open issues** before considering anything else:
+
+  ```bash
+  gh api repos/stroem/shopping-list/milestones --jq \
+    'sort_by(.number)[] | select(.open_issues>0) | "\(.number)\t\(.title)\t\(.open_issues) open"'
+  # then list issues in that milestone (earliest-first), e.g. milestone "M0 — Foundation & infra":
+  gh issue list --repo stroem/shopping-list --state open --milestone "M0 — Foundation & infra"
+  ```
+
+  Recommend one from that milestone (the foundation milestones gate the later
+  ones — don't pull an M3 app issue while M0 infra is unbuilt), ranking within it
+  by readiness, dependencies, labels, and age. Only fall back to
+  `gh issue list --repo stroem/shopping-list --state open` (no milestone) when no
+  milestone has open issues. **Confirm with the user before taking it.**
 
 Then read and claim the issue:
 
