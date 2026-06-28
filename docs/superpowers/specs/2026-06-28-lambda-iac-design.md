@@ -32,7 +32,7 @@ connection string a real secret (it contains the DB password), the Lambda
 ## Components
 
 ### `infra/template.yaml` (SAM)
-- `Transform: AWS::Serverless-2016-10-09`.
+- `Transform: AWS::Serverless-2016-10-31` (the SAM transform macro).
 - **Parameters:** `DatabaseUrlParam` (String, default `/shopping-list/database-url`).
 - **Globals → Function:** `Runtime: provided.al2023`, `Architectures: [arm64]`,
   `MemorySize: 128`, `Timeout: 10`.

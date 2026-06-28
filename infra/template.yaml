@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Transform: AWS::Serverless-2016-10-09
+Transform: AWS::Serverless-2016-10-31
 Description: Shopping List backend — Go Lambda behind an HTTP API, Neon Postgres.
 
 Parameters:
@@ -27,8 +27,12 @@ Resources:
         Variables:
           DATABASE_URL_PARAM: !Ref DatabaseUrlParam
       Policies:
-        - SSMParameterReadPolicy:
-            ParameterName: !Ref DatabaseUrlParam
+        # Inline (not SSMParameterReadPolicy): that managed policy builds
+        # arn:…:parameter/${name}, which double-slashes a leading-slash name.
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DatabaseUrlParam}"
       Events:
         Api:
           Type: HttpApi

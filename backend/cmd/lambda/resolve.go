@@ -18,6 +18,7 @@ type paramGetter interface {
 // resolveDatabaseURL returns the Postgres URL with precedence:
 //  1. env DATABASE_URL (local/testing),
 //  2. the SSM SecureString named by env DATABASE_URL_PARAM (decrypted).
+//
 // It errors if neither is configured.
 func resolveDatabaseURL(ctx context.Context, env func(string) string, ssmc paramGetter) (string, error) {
 	if url := env("DATABASE_URL"); url != "" {
