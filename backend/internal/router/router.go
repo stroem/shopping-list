@@ -20,7 +20,8 @@ type Pinger interface {
 
 // Deps are the runtime dependencies the router wires into handlers.
 type Deps struct {
-	DB Pinger
+	DB      Pinger
+	Suggest Suggester
 }
 
 // New returns the application's HTTP handler.
@@ -38,5 +39,9 @@ func New(deps Deps) http.Handler {
 	})
 
 	r.Get("/healthz", healthz(deps.DB))
+
+	r.Route("/v1", func(r chi.Router) {
+		r.Get("/suggest", suggestHandler(deps.Suggest))
+	})
 	return r
 }
