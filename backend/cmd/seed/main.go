@@ -59,7 +59,7 @@ func seedLivsmedelsverket(args []string) error {
 	}
 	defer f.Close()
 
-	rows, err := catalog.ParseLivsmedelsverket(f)
+	rows, err := catalog.ParseLivsmedelsverket(f, nil)
 	if err != nil {
 		return err
 	}
