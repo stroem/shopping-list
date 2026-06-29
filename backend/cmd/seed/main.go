@@ -7,6 +7,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -63,15 +64,18 @@ func seedLivsmedelsverket(args []string) error {
 	// Food groups are optional: if the klassificeringar file is present, use it
 	// to enrich food_group + aisle; otherwise fall back to name-only behavior.
 	var groups map[int]string
-	if kf, kerr := os.Open(*klass); kerr == nil {
+	switch kf, kerr := os.Open(*klass); {
+	case kerr == nil:
 		defer kf.Close()
 		groups, err = catalog.ParseKlassificeringar(kf)
 		if err != nil {
 			return fmt.Errorf("parse klassificeringar %s: %w", *klass, err)
 		}
 		log.Printf("livsmedelsverket: loaded %d food groups from %s", len(groups), *klass)
-	} else {
-		log.Printf("livsmedelsverket: no klassificeringar at %s (%v); seeding without food groups", *klass, kerr)
+	case errors.Is(kerr, os.ErrNotExist):
+		log.Printf("livsmedelsverket: no klassificeringar at %s; seeding without food groups", *klass)
+	default:
+		return fmt.Errorf("open klassificeringar %s: %w", *klass, kerr)
 	}
 
 	rows, err := catalog.ParseLivsmedelsverket(f, groups)

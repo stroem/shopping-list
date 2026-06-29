@@ -46,6 +46,12 @@ func TestParseKlassificeringarTrimsGroup(t *testing.T) {
 	}
 }
 
+func TestParseKlassificeringarMalformed(t *testing.T) {
+	if _, err := ParseKlassificeringar(strings.NewReader("{not valid json")); err == nil {
+		t.Fatal("expected decode error for malformed json, got nil")
+	}
+}
+
 func TestFoodGroupAisle(t *testing.T) {
 	cases := map[string]*int{
 		"Mjölk":                        intp(2),

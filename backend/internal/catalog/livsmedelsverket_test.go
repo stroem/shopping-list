@@ -36,6 +36,25 @@ func TestParseLivsmedelsverket(t *testing.T) {
 	}
 }
 
+func TestParseLivsmedelsverketGroupFixesNameFalsePositive(t *testing.T) {
+	// "Oxfilé" trips the name heuristic ("fil" -> dairy 2); the food group fixes it.
+	if a := AisleFor("Oxfilé"); a == nil || *a != 2 {
+		t.Fatalf("precondition: AisleFor(Oxfilé) = %v, want 2 (dairy false positive)", a)
+	}
+	groups := map[int]string{1: "Rött kött"}
+	const src = `{"livsmedel":[{"nummer":1,"namn":"Oxfilé"}]}`
+	rows, err := ParseLivsmedelsverket(strings.NewReader(src), groups)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if rows[0].Aisle == nil || *rows[0].Aisle != 3 {
+		t.Fatalf("aisle = %v, want 3 (meat from food group, not dairy from name)", rows[0].Aisle)
+	}
+	if rows[0].FoodGroup == nil || *rows[0].FoodGroup != "Rött kött" {
+		t.Fatalf("food group = %v, want Rött kött", rows[0].FoodGroup)
+	}
+}
+
 func TestParseLivsmedelsverketWithGroups(t *testing.T) {
 	// nummer 1 -> mapped group (Mjölk->2); nummer 2 -> unmapped group, name
 	// fallback (Lax->4); nummer 3 absent from groups (name fallback).
