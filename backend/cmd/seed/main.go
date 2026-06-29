@@ -44,6 +44,7 @@ func usage() {
 func seedLivsmedelsverket(args []string) error {
 	fs := flag.NewFlagSet("livsmedelsverket", flag.ExitOnError)
 	file := fs.String("file", "../data/food/livsmedelsverket_products.json", "path to livsmedelsverket products json")
+	klass := fs.String("klass", "../data/food/livsmedelsverket_klassificeringar.json", "path to livsmedelsverket klassificeringar json (food groups); optional")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -59,7 +60,21 @@ func seedLivsmedelsverket(args []string) error {
 	}
 	defer f.Close()
 
-	rows, err := catalog.ParseLivsmedelsverket(f, nil)
+	// Food groups are optional: if the klassificeringar file is present, use it
+	// to enrich food_group + aisle; otherwise fall back to name-only behavior.
+	var groups map[int]string
+	if kf, kerr := os.Open(*klass); kerr == nil {
+		defer kf.Close()
+		groups, err = catalog.ParseKlassificeringar(kf)
+		if err != nil {
+			return fmt.Errorf("parse klassificeringar %s: %w", *klass, err)
+		}
+		log.Printf("livsmedelsverket: loaded %d food groups from %s", len(groups), *klass)
+	} else {
+		log.Printf("livsmedelsverket: no klassificeringar at %s (%v); seeding without food groups", *klass, kerr)
+	}
+
+	rows, err := catalog.ParseLivsmedelsverket(f, groups)
 	if err != nil {
 		return err
 	}
@@ -71,11 +86,17 @@ func seedLivsmedelsverket(args []string) error {
 	}
 	defer pool.Close()
 
+	withGroup := 0
+	for _, r := range rows {
+		if r.FoodGroup != nil {
+			withGroup++
+		}
+	}
 	inserted, updated, err := catalog.UpsertFood(ctx, pool, rows)
 	if err != nil {
 		return err
 	}
-	log.Printf("livsmedelsverket: %d parsed, %d inserted, %d updated", len(rows), inserted, updated)
+	log.Printf("livsmedelsverket: %d parsed (%d with food group), %d inserted, %d updated", len(rows), withGroup, inserted, updated)
 	return nil
 }
 
