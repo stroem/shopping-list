@@ -112,7 +112,9 @@ func (s *Store) List(ctx context.Context, householdID string) ([]List, error) {
 // Update renames and/or (un)archives a list. A nil name leaves the name; a nil
 // archived leaves the archive state. archived=true sets archived_at=now(),
 // archived=false clears it. Scoped to the household and live rows only; returns
-// ErrNotFound if the list is absent, foreign, or soft-deleted.
+// ErrNotFound if the list is absent, foreign, or soft-deleted. A call with both
+// name nil and archived nil is a harmless idempotent touch: it still bumps
+// updated_at, which the sync path (see issue #12) can use as a no-op write fence.
 func (s *Store) Update(ctx context.Context, householdID, id string, name *string, archived *bool) (List, error) {
 	l, err := scanList(s.db.QueryRow(ctx, `
 UPDATE lists SET

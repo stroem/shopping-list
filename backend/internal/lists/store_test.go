@@ -108,9 +108,11 @@ func TestListUpdateArchiveSoftDelete(t *testing.T) {
 	idA := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 	idB := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
-	if _, _, err := s.Upsert(ctx, hh, idA, "Groceries"); err != nil {
+	listA, _, err := s.Upsert(ctx, hh, idA, "Groceries")
+	if err != nil {
 		t.Fatalf("seed A: %v", err)
 	}
+	before := listA.UpdatedAt
 	if _, _, err := s.Upsert(ctx, hh, idB, "Hardware"); err != nil {
 		t.Fatalf("seed B: %v", err)
 	}
@@ -121,13 +123,14 @@ func TestListUpdateArchiveSoftDelete(t *testing.T) {
 		t.Fatalf("list = %+v err=%v", all, err)
 	}
 
-	// Rename A.
+	// Rename A; sleep first so the clock advances past the seed timestamp.
+	time.Sleep(5 * time.Millisecond)
 	renamed, err := s.Update(ctx, hh, idA, strptr("Food"), nil)
 	if err != nil || renamed.Name != "Food" || renamed.ArchivedAt != nil {
 		t.Fatalf("rename: %+v err=%v", renamed, err)
 	}
-	if !renamed.UpdatedAt.After(renamed.CreatedAt) && !renamed.UpdatedAt.Equal(renamed.CreatedAt) {
-		t.Fatalf("updated_at not maintained: %+v", renamed)
+	if !renamed.UpdatedAt.After(before) {
+		t.Fatalf("updated_at did not advance: before=%v after=%v", before, renamed.UpdatedAt)
 	}
 
 	// Archive A, then unarchive.

@@ -81,6 +81,9 @@ func listLists(store ListStore) http.HandlerFunc {
 			web.ServerError(w, r, err, "list lists failed")
 			return
 		}
+		if ls == nil {
+			ls = []lists.List{}
+		}
 		web.JSON(w, http.StatusOK, ls)
 	}
 }
