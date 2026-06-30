@@ -18,9 +18,11 @@ import (
 	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
 	"github.com/stroem/shopping-list/backend/internal/households"
+	"github.com/stroem/shopping-list/backend/internal/idempotency"
 	"github.com/stroem/shopping-list/backend/internal/logging"
 	"github.com/stroem/shopping-list/backend/internal/router"
 	"github.com/stroem/shopping-list/backend/internal/suggest"
+	syncpkg "github.com/stroem/shopping-list/backend/internal/sync"
 )
 
 func main() {
@@ -67,13 +69,15 @@ func main() {
 	// effective ceiling is limit × concurrent instances, a coarse abuse guard.
 	corsOrigins := config.ParseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	adapter := httpadapter.NewV2(router.New(router.Deps{
-		DB:                 pool,
-		Suggest:            suggest.New(pool),
-		AuthMiddleware:     auth.Middleware(verifier, auth.NewUserStore(pool)),
-		Households:         households.NewStore(pool),
-		CORSAllowedOrigins: corsOrigins,
-		SuggestRateLimit:   config.SuggestRateLimit(os.Getenv("SUGGEST_RATE_LIMIT")),
-		SuggestRateWindow:  config.SuggestRateWindow(os.Getenv("SUGGEST_RATE_WINDOW")),
+		DB:                    pool,
+		Suggest:               suggest.New(pool),
+		AuthMiddleware:        auth.Middleware(verifier, auth.NewUserStore(pool)),
+		Households:            households.NewStore(pool),
+		Sync:                  syncpkg.NewStore(pool),
+		IdempotencyMiddleware: idempotency.Middleware(idempotency.NewStore(pool)),
+		CORSAllowedOrigins:    corsOrigins,
+		SuggestRateLimit:      config.SuggestRateLimit(os.Getenv("SUGGEST_RATE_LIMIT")),
+		SuggestRateWindow:     config.SuggestRateWindow(os.Getenv("SUGGEST_RATE_WINDOW")),
 	}))
 	lambda.Start(adapter.ProxyWithContext)
 }

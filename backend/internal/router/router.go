@@ -36,6 +36,11 @@ type Deps struct {
 	RequestTimeout time.Duration
 	AuthMiddleware func(http.Handler) http.Handler
 	Households     HouseholdStore
+	// Sync serves GET /v1/sync; nil disables the route.
+	Sync SyncStore
+	// IdempotencyMiddleware wraps authenticated write routes so repeated
+	// Idempotency-Key requests replay. nil disables it.
+	IdempotencyMiddleware func(http.Handler) http.Handler
 	// CORSAllowedOrigins are the cross-origin web origins allowed to call the API.
 	// Empty falls back to defaultCORSOrigins (local dev only), never "*".
 	CORSAllowedOrigins []string
@@ -90,14 +95,20 @@ func New(deps Deps) http.Handler {
 		// healthz lives outside /v1 and is never limited (liveness must not 429).
 		r.Use(suggestRateLimiter(deps.SuggestRateLimit, deps.SuggestRateWindow))
 		r.Get("/suggest", suggestHandler(deps.Suggest))
-		if deps.Households != nil {
-			r.Group(func(r chi.Router) {
-				r.Use(auth.RequireAuth)
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAuth)
+			if deps.IdempotencyMiddleware != nil {
+				r.Use(deps.IdempotencyMiddleware)
+			}
+			if deps.Households != nil {
 				r.Post("/households", createHousehold(deps.Households))
 				r.Post("/households/join", joinHousehold(deps.Households))
 				r.Get("/households/{id}", getHousehold(deps.Households))
-			})
-		}
+			}
+			if deps.Sync != nil {
+				r.Get("/sync", syncHandler(deps.Sync))
+			}
+		})
 	})
 	return r
 }
