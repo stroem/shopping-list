@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -11,6 +12,13 @@ import (
 // defaultRequestTimeout bounds each request when REQUEST_TIMEOUT is unset or
 // unparseable. It must be comfortably under API Gateway's 29s limit.
 const defaultRequestTimeout = 5 * time.Second
+
+// Suggest rate-limit defaults applied when SUGGEST_RATE_LIMIT /
+// SUGGEST_RATE_WINDOW are unset or unparseable.
+const (
+	defaultSuggestRateLimit  = 60
+	defaultSuggestRateWindow = time.Minute
+)
 
 // Config is the server's runtime configuration, sourced entirely from env vars.
 type Config struct {
@@ -24,6 +32,12 @@ type Config struct {
 	// API, parsed from CORS_ALLOWED_ORIGINS (comma-separated). Empty means the
 	// router applies its safe local-dev default; set it in production.
 	CORSAllowedOrigins []string
+	// SuggestRateLimit is the max number of /v1/suggest requests per client per
+	// SuggestRateWindow, from SUGGEST_RATE_LIMIT (default 60).
+	SuggestRateLimit int
+	// SuggestRateWindow is the sliding window for SuggestRateLimit, from
+	// SUGGEST_RATE_WINDOW (Go duration string, default 1m).
+	SuggestRateWindow time.Duration
 }
 
 // Load reads configuration from the environment. DATABASE_URL is required.
@@ -34,6 +48,8 @@ func Load() (Config, error) {
 		LogLevel:           os.Getenv("LOG_LEVEL"),
 		RequestTimeout:     requestTimeout(os.Getenv("REQUEST_TIMEOUT")),
 		CORSAllowedOrigins: ParseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")),
+		SuggestRateLimit:   SuggestRateLimit(os.Getenv("SUGGEST_RATE_LIMIT")),
+		SuggestRateWindow:  SuggestRateWindow(os.Getenv("SUGGEST_RATE_WINDOW")),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required")
@@ -73,4 +89,24 @@ func requestTimeout(raw string) time.Duration {
 		return d
 	}
 	return defaultRequestTimeout
+}
+
+// SuggestRateLimit parses the per-client request budget for /v1/suggest,
+// falling back to the default on empty or invalid input so a typo can never
+// disable rate limiting. Exported so cmd/lambda, which skips Load, parses the
+// same env var consistently.
+func SuggestRateLimit(raw string) int {
+	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+		return n
+	}
+	return defaultSuggestRateLimit
+}
+
+// SuggestRateWindow parses the sliding window for SuggestRateLimit, falling back
+// to the default on empty or invalid input. Exported for cmd/lambda parity.
+func SuggestRateWindow(raw string) time.Duration {
+	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+		return d
+	}
+	return defaultSuggestRateWindow
 }

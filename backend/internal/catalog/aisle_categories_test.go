@@ -19,6 +19,14 @@ func TestAisleForCategories(t *testing.T) {
 		{"pantry catch-all", []string{"en:groceries", "en:sauces"}, intp(6)},
 		{"no match", []string{"en:made-in-sweden"}, nil},
 		{"empty", nil, nil},
+		{"ice-cream is frozen not dairy", []string{"en:ice-creams"}, intp(7)},
+		{"eggplant is produce not dairy", []string{"en:eggplants"}, intp(1)},
+		{"real cream stays dairy", []string{"en:creams"}, intp(2)},
+		{"oil no longer matches boiled", []string{"en:boiled-vegetables"}, intp(1)},
+		{"compound beats competing dairy tag", []string{"en:dairies", "en:ice-creams"}, intp(7)},
+		{"potatoes are produce", []string{"en:potatoes"}, intp(1)},
+		{"sweet potato is produce not candy", []string{"en:sweet-potatoes"}, intp(1)},
+		{"fishes are seafood", []string{"en:fishes"}, intp(4)},
 	}
 	for _, c := range cases {
 		got := AisleForCategories(c.tags)

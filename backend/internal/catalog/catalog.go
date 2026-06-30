@@ -13,6 +13,7 @@ type Row struct {
 	Source     string
 	ExternalID string
 	Name       string
+	FoodGroup  *string
 	Aisle      *int
 }
 
@@ -22,10 +23,10 @@ type Querier interface {
 }
 
 const upsertFoodSQL = `
-INSERT INTO food_catalog (source, external_id, name, aisle)
-VALUES ($1, $2, $3, $4)
+INSERT INTO food_catalog (source, external_id, name, food_group, aisle)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (source, external_id)
-DO UPDATE SET name = EXCLUDED.name, aisle = EXCLUDED.aisle, updated_at = now()
+DO UPDATE SET name = EXCLUDED.name, food_group = EXCLUDED.food_group, aisle = EXCLUDED.aisle, updated_at = now()
 RETURNING (xmax = 0) AS inserted`
 
 // UpsertFood inserts or updates each row, idempotently, keyed by
@@ -34,7 +35,7 @@ RETURNING (xmax = 0) AS inserted`
 func UpsertFood(ctx context.Context, db Querier, rows []Row) (inserted, updated int, err error) {
 	for _, r := range rows {
 		var wasInsert bool
-		if err = db.QueryRow(ctx, upsertFoodSQL, r.Source, r.ExternalID, r.Name, r.Aisle).Scan(&wasInsert); err != nil {
+		if err = db.QueryRow(ctx, upsertFoodSQL, r.Source, r.ExternalID, r.Name, r.FoodGroup, r.Aisle).Scan(&wasInsert); err != nil {
 			return inserted, updated, fmt.Errorf("upsert %s/%s: %w", r.Source, r.ExternalID, err)
 		}
 		if wasInsert {

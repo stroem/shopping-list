@@ -54,7 +54,8 @@ A root **`justfile`** wraps the common tasks (`just` to list): `just run` (API),
 - `go build ./...` · `go test ./...`
 - `go run ./cmd/api` — local API on `:8080`, **requires `DATABASE_URL`**; `GET /healthz` pings the DB (200 JSON / 503).
 - `go run ./cmd/migrate <up|down|version|force <v>|steps <n>|goto <v>>` — migration CLI (reads `DATABASE_URL`; destructive ops prompt on a TTY, `-y` to skip).
-- `go run ./cmd/seed` — import `data/food/*` into the catalog + EAN tables (one-shot, local).
+- `go run ./cmd/seed livsmedelsverket|openfoodfacts` — import `data/food/*` into the catalog + EAN tables (one-shot, local). `livsmedelsverket` also reads `livsmedelsverket_klassificeringar.json` (food groups) when present.
+- `GET /v1/sync?since=<RFC3339Nano cursor>` — pull-sync: household-scoped rows changed since the cursor (soft-deletes included); returns `{cursor, changes}`. Mutating routes accept `Idempotency-Key` (replayed via the `idempotency` middleware).
 - Migrations via `golang-migrate` (embedded from the `migrations/` dir).
 
 **App (Flutter), from `app/`:**

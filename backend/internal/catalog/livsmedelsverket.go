@@ -16,8 +16,10 @@ type livsmedelEnvelope struct {
 }
 
 // ParseLivsmedelsverket decodes the Livsmedelsverket products JSON into Rows.
-// Items with an empty name are skipped; aisle is derived from the name.
-func ParseLivsmedelsverket(r io.Reader) ([]Row, error) {
+// Items with an empty name are skipped. When groups (nummer -> EuroFIR food
+// group, from ParseKlassificeringar) is non-nil, each row's FoodGroup is set and
+// its aisle prefers the food-group mapping, falling back to the name heuristic.
+func ParseLivsmedelsverket(r io.Reader, groups map[int]string) ([]Row, error) {
 	var env livsmedelEnvelope
 	if err := json.NewDecoder(r).Decode(&env); err != nil {
 		return nil, fmt.Errorf("decode livsmedelsverket json: %w", err)
@@ -28,12 +30,20 @@ func ParseLivsmedelsverket(r io.Reader) ([]Row, error) {
 		if name == "" {
 			continue
 		}
-		rows = append(rows, Row{
+		row := Row{
 			Source:     "livsmedelsverket",
 			ExternalID: strconv.Itoa(item.Nummer),
 			Name:       name,
-			Aisle:      AisleFor(name),
-		})
+		}
+		if g, ok := groups[item.Nummer]; ok {
+			group := g
+			row.FoodGroup = &group
+			row.Aisle = FoodGroupAisle(g)
+		}
+		if row.Aisle == nil {
+			row.Aisle = AisleFor(name)
+		}
+		rows = append(rows, row)
 	}
 	return rows, nil
 }

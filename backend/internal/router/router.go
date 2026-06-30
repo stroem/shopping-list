@@ -37,9 +37,21 @@ type Deps struct {
 	AuthMiddleware func(http.Handler) http.Handler
 	Households     HouseholdStore
 	Lists          ListStore
+	// Sync serves GET /v1/sync; nil disables the route.
+	Sync SyncStore
+	// IdempotencyMiddleware wraps authenticated write routes so repeated
+	// Idempotency-Key requests replay. nil disables it.
+	IdempotencyMiddleware func(http.Handler) http.Handler
 	// CORSAllowedOrigins are the cross-origin web origins allowed to call the API.
 	// Empty falls back to defaultCORSOrigins (local dev only), never "*".
 	CORSAllowedOrigins []string
+	// SuggestRateLimit caps /v1/suggest requests per client per
+	// SuggestRateWindow; a non-positive value falls back to a sane default so
+	// zero-value Deps stay safe and testable.
+	SuggestRateLimit int
+	// SuggestRateWindow is the sliding window for SuggestRateLimit; non-positive
+	// falls back to the default.
+	SuggestRateWindow time.Duration
 }
 
 // New returns the application's HTTP handler.
@@ -79,24 +91,32 @@ func New(deps Deps) http.Handler {
 	r.Get("/healthz", healthz(deps.DB))
 
 	r.Route("/v1", func(r chi.Router) {
+		// Rate-limit the public /v1 group per client. It runs after the global
+		// DeviceIDMiddleware above, so web.DeviceID(ctx) is populated for keying.
+		// healthz lives outside /v1 and is never limited (liveness must not 429).
+		r.Use(suggestRateLimiter(deps.SuggestRateLimit, deps.SuggestRateWindow))
 		r.Get("/suggest", suggestHandler(deps.Suggest))
-		if deps.Households != nil || deps.Lists != nil {
-			r.Group(func(r chi.Router) {
-				r.Use(auth.RequireAuth)
-				if deps.Households != nil {
-					r.Post("/households", createHousehold(deps.Households))
-					r.Post("/households/join", joinHousehold(deps.Households))
-					r.Get("/households/{id}", getHousehold(deps.Households))
-				}
-				if deps.Lists != nil {
-					r.Put("/lists/{id}", putList(deps.Lists))
-					r.Get("/lists", listLists(deps.Lists))
-					r.Get("/lists/{id}", getList(deps.Lists))
-					r.Patch("/lists/{id}", patchList(deps.Lists))
-					r.Delete("/lists/{id}", deleteList(deps.Lists))
-				}
-			})
-		}
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAuth)
+			if deps.IdempotencyMiddleware != nil {
+				r.Use(deps.IdempotencyMiddleware)
+			}
+			if deps.Households != nil {
+				r.Post("/households", createHousehold(deps.Households))
+				r.Post("/households/join", joinHousehold(deps.Households))
+				r.Get("/households/{id}", getHousehold(deps.Households))
+			}
+			if deps.Lists != nil {
+				r.Put("/lists/{id}", putList(deps.Lists))
+				r.Get("/lists", listLists(deps.Lists))
+				r.Get("/lists/{id}", getList(deps.Lists))
+				r.Patch("/lists/{id}", patchList(deps.Lists))
+				r.Delete("/lists/{id}", deleteList(deps.Lists))
+			}
+			if deps.Sync != nil {
+				r.Get("/sync", syncHandler(deps.Sync))
+			}
+		})
 	})
 	return r
 }

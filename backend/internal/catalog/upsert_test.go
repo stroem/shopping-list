@@ -16,6 +16,8 @@ import (
 
 func intp(i int) *int { return &i }
 
+func strp(s string) *string { return &s }
+
 func TestUpsertFoodIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	ctr, err := tcpostgres.Run(ctx, "postgres:16-alpine",
@@ -71,5 +73,66 @@ func TestUpsertFoodIsIdempotent(t *testing.T) {
 	}
 	if count != 1 || name != "Mjölk 1.5%" {
 		t.Fatalf("after update: count=%d name=%q, want 1 / Mjölk 1.5%%", count, name)
+	}
+}
+
+func TestUpsertFoodPersistsFoodGroup(t *testing.T) {
+	ctx := context.Background()
+	ctr, err := tcpostgres.Run(ctx, "postgres:16-alpine",
+		tcpostgres.WithDatabase("shopping_list"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second)),
+	)
+	if err != nil {
+		t.Skipf("skipping: cannot start postgres container (docker unavailable?): %v", err)
+	}
+	t.Cleanup(func() { _ = ctr.Terminate(ctx) })
+
+	pgURL, err := ctr.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	if err := db.Migrate(ctx, pgURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, pgURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	rows := []catalog.Row{
+		{Source: "livsmedelsverket", ExternalID: "1", Name: "Mjölk 3%", FoodGroup: strp("Mjölk"), Aisle: intp(2)},
+	}
+	if _, _, err := catalog.UpsertFood(ctx, pool, rows); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	var group string
+	var aisle int
+	if err := pool.QueryRow(ctx,
+		`SELECT food_group, aisle FROM food_catalog WHERE source=$1 AND external_id=$2`,
+		"livsmedelsverket", "1").Scan(&group, &aisle); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if group != "Mjölk" || aisle != 2 {
+		t.Fatalf("persisted (food_group=%q, aisle=%d), want (Mjölk, 2)", group, aisle)
+	}
+
+	// Re-run with a changed food group -> updated, not duplicated.
+	rows[0].FoodGroup = strp("Mejeriprodukter")
+	ins, upd, err := catalog.UpsertFood(ctx, pool, rows)
+	if err != nil || ins != 0 || upd != 1 {
+		t.Fatalf("re-upsert: ins=%d upd=%d err=%v, want 0/1/nil", ins, upd, err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT food_group FROM food_catalog WHERE source=$1 AND external_id=$2`,
+		"livsmedelsverket", "1").Scan(&group); err != nil {
+		t.Fatalf("select after re-run: %v", err)
+	}
+	if group != "Mejeriprodukter" {
+		t.Fatalf("food_group after re-run = %q, want Mejeriprodukter", group)
 	}
 }
