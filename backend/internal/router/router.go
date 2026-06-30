@@ -36,6 +36,7 @@ type Deps struct {
 	RequestTimeout time.Duration
 	AuthMiddleware func(http.Handler) http.Handler
 	Households     HouseholdStore
+	Lists          ListStore
 	// CORSAllowedOrigins are the cross-origin web origins allowed to call the API.
 	// Empty falls back to defaultCORSOrigins (local dev only), never "*".
 	CORSAllowedOrigins []string
@@ -79,12 +80,21 @@ func New(deps Deps) http.Handler {
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Get("/suggest", suggestHandler(deps.Suggest))
-		if deps.Households != nil {
+		if deps.Households != nil || deps.Lists != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAuth)
-				r.Post("/households", createHousehold(deps.Households))
-				r.Post("/households/join", joinHousehold(deps.Households))
-				r.Get("/households/{id}", getHousehold(deps.Households))
+				if deps.Households != nil {
+					r.Post("/households", createHousehold(deps.Households))
+					r.Post("/households/join", joinHousehold(deps.Households))
+					r.Get("/households/{id}", getHousehold(deps.Households))
+				}
+				if deps.Lists != nil {
+					r.Put("/lists/{id}", putList(deps.Lists))
+					r.Get("/lists", listLists(deps.Lists))
+					r.Get("/lists/{id}", getList(deps.Lists))
+					r.Patch("/lists/{id}", patchList(deps.Lists))
+					r.Delete("/lists/{id}", deleteList(deps.Lists))
+				}
 			})
 		}
 	})
