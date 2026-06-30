@@ -56,6 +56,9 @@ func mkHousehold(t *testing.T, pool *pgxpool.Pool) string {
 	return id
 }
 
+func strptr(s string) *string { return &s }
+func boolptr(b bool) *bool    { return &b }
+
 func TestUpsertCreateThenIdempotentAndGet(t *testing.T) {
 	ctx := context.Background()
 	pool := newPool(t)
@@ -94,5 +97,112 @@ func TestUpsertCreateThenIdempotentAndGet(t *testing.T) {
 	// Get of a missing id → ErrNotFound.
 	if _, err := s.Get(ctx, hh, "22222222-2222-2222-2222-222222222222"); !errors.Is(err, lists.ErrNotFound) {
 		t.Fatalf("get missing err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestListUpdateArchiveSoftDelete(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t)
+	s := lists.NewStore(pool)
+	hh := mkHousehold(t, pool)
+	idA := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	idB := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+	if _, _, err := s.Upsert(ctx, hh, idA, "Groceries"); err != nil {
+		t.Fatalf("seed A: %v", err)
+	}
+	if _, _, err := s.Upsert(ctx, hh, idB, "Hardware"); err != nil {
+		t.Fatalf("seed B: %v", err)
+	}
+
+	// List returns both, newest first (B then A).
+	all, err := s.List(ctx, hh)
+	if err != nil || len(all) != 2 || all[0].ID != idB || all[1].ID != idA {
+		t.Fatalf("list = %+v err=%v", all, err)
+	}
+
+	// Rename A.
+	renamed, err := s.Update(ctx, hh, idA, strptr("Food"), nil)
+	if err != nil || renamed.Name != "Food" || renamed.ArchivedAt != nil {
+		t.Fatalf("rename: %+v err=%v", renamed, err)
+	}
+	if !renamed.UpdatedAt.After(renamed.CreatedAt) && !renamed.UpdatedAt.Equal(renamed.CreatedAt) {
+		t.Fatalf("updated_at not maintained: %+v", renamed)
+	}
+
+	// Archive A, then unarchive.
+	arch, err := s.Update(ctx, hh, idA, nil, boolptr(true))
+	if err != nil || arch.ArchivedAt == nil || arch.Name != "Food" {
+		t.Fatalf("archive: %+v err=%v", arch, err)
+	}
+	unarch, err := s.Update(ctx, hh, idA, nil, boolptr(false))
+	if err != nil || unarch.ArchivedAt != nil {
+		t.Fatalf("unarchive: %+v err=%v", unarch, err)
+	}
+
+	// Archived lists are still listed.
+	if _, err := s.Update(ctx, hh, idB, nil, boolptr(true)); err != nil {
+		t.Fatalf("archive B: %v", err)
+	}
+	all2, err := s.List(ctx, hh)
+	if err != nil || len(all2) != 2 {
+		t.Fatalf("list with archived = %+v err=%v", all2, err)
+	}
+
+	// Soft-delete A: excluded from List and Get → ErrNotFound.
+	if err := s.SoftDelete(ctx, hh, idA); err != nil {
+		t.Fatalf("soft-delete: %v", err)
+	}
+	if _, err := s.Get(ctx, hh, idA); !errors.Is(err, lists.ErrNotFound) {
+		t.Fatalf("get deleted err = %v, want ErrNotFound", err)
+	}
+	all3, err := s.List(ctx, hh)
+	if err != nil || len(all3) != 1 || all3[0].ID != idB {
+		t.Fatalf("list after delete = %+v err=%v", all3, err)
+	}
+
+	// Delete is terminal: re-Upsert of a soft-deleted id → ErrNotFound.
+	if _, _, err := s.Upsert(ctx, hh, idA, "Zombie"); !errors.Is(err, lists.ErrNotFound) {
+		t.Fatalf("re-upsert deleted err = %v, want ErrNotFound", err)
+	}
+
+	// Update / SoftDelete of a missing id → ErrNotFound.
+	missing := "cccccccc-cccc-cccc-cccc-cccccccccccc"
+	if _, err := s.Update(ctx, hh, missing, strptr("x"), nil); !errors.Is(err, lists.ErrNotFound) {
+		t.Fatalf("update missing err = %v, want ErrNotFound", err)
+	}
+	if err := s.SoftDelete(ctx, hh, missing); !errors.Is(err, lists.ErrNotFound) {
+		t.Fatalf("delete missing err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestCrossHouseholdIsolation(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t)
+	s := lists.NewStore(pool)
+	hhA := mkHousehold(t, pool)
+	hhB := mkHousehold(t, pool)
+	id := "dddddddd-dddd-dddd-dddd-dddddddddddd"
+
+	if _, _, err := s.Upsert(ctx, hhA, id, "A's list"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// B cannot see, update, delete, or hijack A's list id.
+	if _, err := s.Get(ctx, hhB, id); !errors.Is(err, lists.ErrNotFound) {
+		t.Fatalf("B get err = %v, want ErrNotFound", err)
+	}
+	if _, err := s.Update(ctx, hhB, id, strptr("hijack"), nil); !errors.Is(err, lists.ErrNotFound) {
+		t.Fatalf("B update err = %v, want ErrNotFound", err)
+	}
+	if err := s.SoftDelete(ctx, hhB, id); !errors.Is(err, lists.ErrNotFound) {
+		t.Fatalf("B delete err = %v, want ErrNotFound", err)
+	}
+	if _, _, err := s.Upsert(ctx, hhB, id, "hijack"); !errors.Is(err, lists.ErrNotFound) {
+		t.Fatalf("B upsert err = %v, want ErrNotFound", err)
+	}
+	// A's list is untouched.
+	if g, err := s.Get(ctx, hhA, id); err != nil || g.Name != "A's list" {
+		t.Fatalf("A's list mutated: %+v err=%v", g, err)
 	}
 }

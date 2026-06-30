@@ -81,3 +81,74 @@ func (s *Store) Get(ctx context.Context, householdID, id string) (List, error) {
 	}
 	return l, nil
 }
+
+// List returns the household's non-deleted lists (archived included), newest first.
+func (s *Store) List(ctx context.Context, householdID string) ([]List, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT `+listCols+` FROM lists
+		 WHERE household_id = $1::uuid AND deleted_at IS NULL
+		 ORDER BY created_at DESC`,
+		householdID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list lists: %w", err)
+	}
+	defer rows.Close()
+
+	out := []List{}
+	for rows.Next() {
+		l, err := scanList(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan list: %w", err)
+		}
+		out = append(out, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate lists: %w", err)
+	}
+	return out, nil
+}
+
+// Update renames and/or (un)archives a list. A nil name leaves the name; a nil
+// archived leaves the archive state. archived=true sets archived_at=now(),
+// archived=false clears it. Scoped to the household and live rows only; returns
+// ErrNotFound if the list is absent, foreign, or soft-deleted.
+func (s *Store) Update(ctx context.Context, householdID, id string, name *string, archived *bool) (List, error) {
+	l, err := scanList(s.db.QueryRow(ctx, `
+UPDATE lists SET
+    name        = COALESCE($3, name),
+    archived_at = CASE
+                    WHEN $4::boolean IS NULL THEN archived_at
+                    WHEN $4::boolean THEN now()
+                    ELSE NULL
+                  END,
+    updated_at  = now()
+WHERE id = $1::uuid AND household_id = $2::uuid AND deleted_at IS NULL
+RETURNING `+listCols,
+		id, householdID, name, archived,
+	))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return List{}, ErrNotFound
+	}
+	if err != nil {
+		return List{}, fmt.Errorf("update list: %w", err)
+	}
+	return l, nil
+}
+
+// SoftDelete sets deleted_at on a live, household-scoped list. Returns
+// ErrNotFound if no live row matched (absent, foreign, or already deleted).
+func (s *Store) SoftDelete(ctx context.Context, householdID, id string) error {
+	tag, err := s.db.Exec(ctx,
+		`UPDATE lists SET deleted_at = now(), updated_at = now()
+		 WHERE id = $1::uuid AND household_id = $2::uuid AND deleted_at IS NULL`,
+		id, householdID,
+	)
+	if err != nil {
+		return fmt.Errorf("soft-delete list: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
