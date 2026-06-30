@@ -36,6 +36,7 @@ type Deps struct {
 	RequestTimeout time.Duration
 	AuthMiddleware func(http.Handler) http.Handler
 	Households     HouseholdStore
+	Lists          ListStore
 	// Sync serves GET /v1/sync; nil disables the route.
 	Sync SyncStore
 	// IdempotencyMiddleware wraps authenticated write routes so repeated
@@ -104,6 +105,13 @@ func New(deps Deps) http.Handler {
 				r.Post("/households", createHousehold(deps.Households))
 				r.Post("/households/join", joinHousehold(deps.Households))
 				r.Get("/households/{id}", getHousehold(deps.Households))
+			}
+			if deps.Lists != nil {
+				r.Put("/lists/{id}", putList(deps.Lists))
+				r.Get("/lists", listLists(deps.Lists))
+				r.Get("/lists/{id}", getList(deps.Lists))
+				r.Patch("/lists/{id}", patchList(deps.Lists))
+				r.Delete("/lists/{id}", deleteList(deps.Lists))
 			}
 			if deps.Sync != nil {
 				r.Get("/sync", syncHandler(deps.Sync))
