@@ -16,9 +16,11 @@ import (
 	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
 	"github.com/stroem/shopping-list/backend/internal/households"
+	"github.com/stroem/shopping-list/backend/internal/idempotency"
 	"github.com/stroem/shopping-list/backend/internal/logging"
 	"github.com/stroem/shopping-list/backend/internal/router"
 	"github.com/stroem/shopping-list/backend/internal/suggest"
+	syncpkg "github.com/stroem/shopping-list/backend/internal/sync"
 )
 
 func main() {
@@ -47,14 +49,16 @@ func main() {
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: router.New(router.Deps{
-			DB:                 pool,
-			Suggest:            suggest.New(pool),
-			RequestTimeout:     cfg.RequestTimeout,
-			AuthMiddleware:     auth.Middleware(verifier, auth.NewUserStore(pool)),
-			Households:         households.NewStore(pool),
-			CORSAllowedOrigins: cfg.CORSAllowedOrigins,
-			SuggestRateLimit:   cfg.SuggestRateLimit,
-			SuggestRateWindow:  cfg.SuggestRateWindow,
+			DB:                    pool,
+			Suggest:               suggest.New(pool),
+			RequestTimeout:        cfg.RequestTimeout,
+			AuthMiddleware:        auth.Middleware(verifier, auth.NewUserStore(pool)),
+			Households:            households.NewStore(pool),
+			Sync:                  syncpkg.NewStore(pool),
+			IdempotencyMiddleware: idempotency.Middleware(idempotency.NewStore(pool)),
+			CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
+			SuggestRateLimit:      cfg.SuggestRateLimit,
+			SuggestRateWindow:     cfg.SuggestRateWindow,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
