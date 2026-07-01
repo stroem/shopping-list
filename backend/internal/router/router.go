@@ -37,6 +37,8 @@ type Deps struct {
 	AuthMiddleware func(http.Handler) http.Handler
 	Households     HouseholdStore
 	Lists          ListStore
+	// ListItems serves the household-scoped list-item routes; nil disables them.
+	ListItems ListItemStore
 	// Sync serves GET /v1/sync; nil disables the route.
 	Sync SyncStore
 	// IdempotencyMiddleware wraps authenticated write routes so repeated
@@ -112,6 +114,12 @@ func New(deps Deps) http.Handler {
 				r.Get("/lists/{id}", getList(deps.Lists))
 				r.Patch("/lists/{id}", patchList(deps.Lists))
 				r.Delete("/lists/{id}", deleteList(deps.Lists))
+			}
+			if deps.ListItems != nil {
+				r.Put("/lists/{listId}/items/{id}", putListItem(deps.ListItems))
+				r.Get("/lists/{listId}/items", listListItems(deps.ListItems))
+				r.Patch("/lists/{listId}/items/{id}", patchListItem(deps.ListItems))
+				r.Delete("/lists/{listId}/items/{id}", deleteListItem(deps.ListItems))
 			}
 			if deps.Sync != nil {
 				r.Get("/sync", syncHandler(deps.Sync))
