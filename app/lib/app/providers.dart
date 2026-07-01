@@ -2,9 +2,11 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../data/api/api_client.dart';
 import '../data/database/app_database.dart';
+import 'router.dart';
 
 /// The app's device id (`X-Device-Id`). Overridden at app start with the value
 /// from [loadOrCreateDeviceId], and in tests via [Provider.overrideWithValue].
@@ -31,3 +33,11 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
 final apiClientProvider = Provider<Dio>(
   (ref) => createDio(deviceId: ref.watch(deviceIdProvider)),
 );
+
+/// The app's [GoRouter], built by [createRouter] and disposed with the
+/// provider so its internal listeners are released.
+final routerProvider = Provider<GoRouter>((ref) {
+  final router = createRouter();
+  ref.onDispose(router.dispose);
+  return router;
+});
