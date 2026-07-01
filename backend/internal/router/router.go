@@ -39,6 +39,8 @@ type Deps struct {
 	Lists          ListStore
 	// ListItems serves the household-scoped list-item routes; nil disables them.
 	ListItems ListItemStore
+	// CheckOffs serves the list-item check-off route; nil disables it.
+	CheckOffs CheckOffStore
 	// Sync serves GET /v1/sync; nil disables the route.
 	Sync SyncStore
 	// IdempotencyMiddleware wraps authenticated write routes so repeated
@@ -120,6 +122,9 @@ func New(deps Deps) http.Handler {
 				r.Get("/lists/{listId}/items", listListItems(deps.ListItems))
 				r.Patch("/lists/{listId}/items/{id}", patchListItem(deps.ListItems))
 				r.Delete("/lists/{listId}/items/{id}", deleteListItem(deps.ListItems))
+			}
+			if deps.CheckOffs != nil {
+				r.Post("/lists/{listId}/items/{id}/check-off", checkOffListItem(deps.CheckOffs))
 			}
 			if deps.Sync != nil {
 				r.Get("/sync", syncHandler(deps.Sync))
