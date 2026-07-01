@@ -57,3 +57,8 @@ vet:
 # tidy backend modules
 tidy:
     cd backend && go mod tidy
+
+# install the repo git hooks (run once per clone)
+hooks:
+    git config core.hooksPath .githooks
+    @echo "git hooks enabled (.githooks): no AI attribution, no commits to main, no data/"

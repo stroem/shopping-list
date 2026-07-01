@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+# Repo guardrails: never commit to main/master; never commit data/.
+# Work is worktree-first on feature branches; main is PR-merge-only.
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || echo DETACHED)"
+case "$branch" in
+  main|master)
+    echo "✖ pre-commit: direct commits to '$branch' are blocked." >&2
+    echo "  Work on a feature branch / worktree; main is PR-merge-only." >&2
+    echo "  (Intentional override: git commit --no-verify)" >&2
+    exit 1
+    ;;
+esac
+
+staged="$(git diff --cached --name-only)"
+if printf '%s\n' "$staged" | grep -Eq '(^|/)data/'; then
+  echo "✖ pre-commit: files under data/ must never be committed (gitignored source data)." >&2
+  printf '%s\n' "$staged" | grep -E '(^|/)data/' | sed 's/^/    /' >&2
+  echo "  (Intentional override: git commit --no-verify)" >&2
+  exit 1
+fi
+exit 0

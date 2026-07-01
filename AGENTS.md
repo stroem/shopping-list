@@ -2,10 +2,17 @@
 
 This is the cross-tool **`AGENTS.md`** standard file: an agent-facing orientation
 read by tools that arrive with no context, and a stable pointer target for the
-workflow skills below (`/create-issue`, `/auto`, the `spec-reviewer` agent). The
-design history under [`docs/superpowers/`](./docs/superpowers/) is the deep
-reference; the **GitHub issue + PR thread** is durable shared memory. Where this
-file and a spec disagree, the **latest approved spec** wins.
+workflow skills below (`/create-issue`, `/auto`, and the `auto` / `tester` /
+`implementer` / `code-reviewer` / `spec-reviewer` agents). The design history
+under [`docs/superpowers/`](./docs/superpowers/) is the deep reference; the
+**GitHub issue + PR thread** is durable shared memory. Where this file and a spec
+disagree, the **latest approved spec** wins.
+
+- **Repository:** `stroem/shopping-list` (GitHub) — the canonical slug every agent
+  and `gh` command uses. Defined here so it lives in exactly one place.
+- **Canonical commands:** the **Build, run, test** section below is the single
+  source of truth for how to build, run, and test this repo. Agents read those
+  commands from here — they do **not** hardcode or invent their own.
 
 ## What this is
 
@@ -47,7 +54,8 @@ docs/superpowers/   specs + plans (design history, deep reference).
 A root **`justfile`** wraps the common tasks (`just` to list): `just run` (API),
 `just db` / `just db-stop` (local Postgres, prints the URL), `just migrate`,
 `just test` (Go + Flutter), `just app-run`. **`cmd/api` requires `DATABASE_URL`**
-— use `just db` to get one locally.
+— use `just db` to get one locally. Run **`just hooks`** once per clone to install
+the git guardrails (block AI attribution, direct commits to `main`, and `data/`).
 
 **Backend (Go), from `backend/`:**
 
@@ -93,6 +101,29 @@ Entities: `households`, `users` (device_id, household_id), `lists`,
 (Livsmedelsverket generics), `ean_mappings` (Open Food Facts barcode → product).
 See the design spec for the field-level schema.
 
+## Glossary (ubiquitous language)
+
+Use these exact terms in specs, issues, code, and commits — one name per concept
+cuts agent verbosity and drift. To refine or add a term, use the `domain-modeling`
+skill; this list and the `## Data model` section are its home.
+
+- **Household** — the sharing & access boundary. Everything is household-scoped;
+  cross-household access returns **404** (no existence leak). Joined via an **invite code**.
+- **List** / **list item** — a named shopping list, and one line on it (both household-scoped).
+- **Item** — the per-household product master that drives autocomplete; distinct from a
+  *list item* (one occurrence of a product on a list).
+- **Check-off event** — append-only record of a list item being ticked off; the history
+  that feeds stats and aisle learning.
+- **food_catalog** — Livsmedelsverket generic foods, the autocomplete source.
+- **ean_mapping** — Open Food Facts barcode → product mapping, the scanning source.
+- **Outbox** — the local write queue; writes go local-first and replay to the backend.
+- **Pull sync** — `GET /v1/sync?since=<cursor>`: household-scoped rows changed since the
+  cursor (soft-deletes included). No realtime push in v1.
+- **Idempotency key** — client-generated UUID sent as `Idempotency-Key` so double-taps and
+  outbox replays never duplicate.
+- **Device id** — `X-Device-Id`; retained for future device/sync use, **not** identity
+  (identity is OIDC `(issuer, subject)`).
+
 ## Sync & sharing
 
 - **Local-first:** the app reads from Drift/SQLite; writes go local first and into
@@ -130,10 +161,12 @@ It exists only as input to `backend/cmd/seed`, which imports it once into Postgr
 - **Config via env** (`DATABASE_URL`, etc.); `.env` is dotenv-loaded locally, an
   `.env.example` is committed.
 - **Git:** Conventional Commits 1.0.0; Conventional Branches; **no AI/Claude
-  attribution in commit messages** (hard rule). Standard Go project layout.
-- **Workflow:** new work goes brainstorm → spec (`docs/superpowers/specs/`) →
-  plan (`docs/superpowers/plans/`) → subagent-driven execution → finish in a
-  worktree. Don't skip the design step.
+  attribution in commit messages** (hard rule, hook-enforced via `just hooks`).
+  Standard Go project layout.
+- **Workflow:** new work goes assumptions → spec (`docs/superpowers/specs/`) →
+  plan (`docs/superpowers/plans/`) → subagent-driven TDD execution → review →
+  finish in a worktree. Don't skip the design step. The `/auto` orchestrator runs
+  this lifecycle autonomously (self-contained, no plugin dependency).
 
 ## If you were dispatched as a subagent
 
@@ -148,14 +181,26 @@ It exists only as input to `backend/cmd/seed`, which imports it once into Postgr
 
 ## Specialised workflow
 
-Three named entry points turn this repo's superpowers practice into stable,
-GitHub-anchored commands, all against **`stroem/shopping-list`**:
+Named entry points turn this repo's development practice into stable,
+GitHub-anchored commands, all against **`stroem/shopping-list`** — self-contained,
+with **no `superpowers` plugin dependency**:
 
 - **`/create-issue <description>`** — draft and file a GitHub issue (structured
   title + body + suggested labels), then offer `/auto`.
-- **`/auto [issue-number]`** — autonomous issue→PR orchestrator: interactive spec
-  phase, then hands-off plan → TDD via subagents → two-stage review → verify →
-  PR, asking before squash-merging to `main`.
+- **`/auto [issue-number]`** — a thin trigger that resolves the issue (and the
+  end-of-run merge prompt), then launches the self-contained **`auto` agent**: a
+  fully autonomous issue→PR orchestrator that runs assumptions → worktree → spec →
+  plan → a subagent-driven TDD loop → two-stage review → verify → PR, hands-off,
+  asking before squash-merging to `main`.
+- **`auto` agent** — the orchestrator; owns git and commits, dispatches the
+  `tester` + `implementer` per bite-sized TDD task (independent tasks in
+  parallel), and runs the two reviewers below.
+- **`tester` agent** — testing expert; writes the **failing** test for one task
+  (RED) and proves it fails for the right reason.
+- **`implementer` agent** — production-code expert; writes the **minimal** code to
+  turn the test green (GREEN).
+- **`code-reviewer` agent** — code-correctness review (bugs, edge cases, idioms,
+  test quality).
 - **`spec-reviewer` agent** — goal-conformance review (does the implementation
   fulfil the spec's intent and the issue's acceptance criteria?), distinct from
   code-correctness review.
