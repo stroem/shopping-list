@@ -17,6 +17,7 @@ var wantTables = []string{
 	"households", "users", "lists", "items", "list_items",
 	"check_off_events", "stores", "store_aisles", "store_items",
 	"food_catalog", "ean_mappings",
+	"recipes", "recipe_ingredients",
 }
 
 func TestMigrateUpDownRoundTrip(t *testing.T) {
