@@ -1,6 +1,6 @@
 ---
 name: create-issue
-description: Draft and create a GitHub issue in stroem/shopping-list from a free-text description. Generates a structured title + body + suggested labels, confirms before creating, and offers to launch /auto on the new issue. Use when the user types /create-issue <description> or asks to file/open/create an issue.
+description: Use when the user types /create-issue <description>, or asks to file, open, draft, or create a GitHub issue in stroem/shopping-list from a free-text description.
 argument-hint: "<description>"
 ---
 
@@ -52,6 +52,11 @@ existing repo set only; never invent a label that is not already in the repo
   device identity, auth), `infra` (AWS Lambda / API Gateway / Neon / IaC,
   cost).
 - **Meta** (optional): `question`, `good first issue`, `help wanted`.
+- **Readiness** (decided after grilling in Step 3 — this label gates `/auto`):
+  `ready-for-agent` when the issue is fully specified and unambiguous (a
+  no-questions agent could implement it correctly), or `needs-info` when an open
+  decision still needs a human. Default to `needs-info` until grilling has removed
+  the ambiguity.
 
 Example: autocomplete ranks the wrong items → `bug` + `app`; adding barcode
 scanning → `feature` + `catalog`; wiring up the Lambda deploy →
@@ -84,12 +89,26 @@ Judge overlap by intent, not just title wording. Then:
 
 Carry the user's choice into the next step.
 
-## Step 3 — Confirm
+## Step 3 — Grill, then confirm (alignment gate)
 
-Show the user the full draft: title, rendered body, and chosen labels (and the
-duplicate-check result from Step 2). Ask whether anything should change. Refine
-on focused questions and repeat until the user is happy. This is the **only**
-interactive gate.
+This is the **only** interactive gate, and it does double duty: it aligns the
+issue *and* decides whether `/auto` can safely take it.
+
+**Grill out ambiguity first.** `/auto` asks the user nothing — it assumes and
+documents — so any ambiguity left in the issue becomes an unreviewed assumption.
+Before confirming, interview the user to close the gaps a no-questions agent would
+otherwise have to guess: the acceptance criteria (make each one testable), what is
+in and out of scope, error and edge cases, and any UX / API / schema decision the
+description leaves open. Use the `grilling` skill for a sharper interview. Keep
+going until nothing material is left to a guess.
+
+**Then set readiness.** Label the issue `ready-for-agent` if grilling left it
+fully specified and unambiguous; label it `needs-info` if a decision still
+genuinely needs a human — and say which one, so it is clearly not yet for `/auto`.
+
+**Then confirm.** Show the user the full draft: title, rendered body, chosen
+labels (including readiness), and the duplicate-check result from Step 2. Refine
+on focused questions and repeat until the user is happy.
 
 ## Step 4 — Create
 
@@ -111,9 +130,15 @@ runs, report the created issue's number and URL.
 
 ## Step 5 — Offer the autonomous run
 
-After creation, offer to take it the rest of the way:
+After creation, offer the autonomous run **only if the issue is
+`ready-for-agent`**:
 
-> Issue #{N} created. Want me to run `/auto {N}` now — spec through to PR?
+> Issue #{N} created and ready-for-agent. Want me to run `/auto {N}` now — spec
+> through to PR?
 
 - **Yes** → invoke the `auto` skill with the new issue number.
 - **No** → stop here; the user can run `/auto {N}` later.
+
+If the issue is `needs-info`, do **not** offer `/auto`. Tell the user which
+decision is still open; it should be resolved and the label flipped to
+`ready-for-agent` before an autonomous run.

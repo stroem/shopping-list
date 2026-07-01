@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# Repo rule: no AI/Claude attribution in commit messages.
+# Matches attribution trailers only (not the literal path ".claude/"), so commits
+# that legitimately touch .claude/ files are unaffected.
+msg_file="$1"
+
+if grep -iEq '^[[:space:]]*co-authored-by:.*(claude|anthropic|noreply@anthropic)|generated with.*claude|🤖[[:space:]]*generated' "$msg_file"; then
+  echo "✖ commit-msg: AI/Claude attribution is not allowed in commit messages." >&2
+  echo "  Remove the Co-Authored-By / 'Generated with Claude' trailer and recommit." >&2
+  echo "  (Intentional override: git commit --no-verify)" >&2
+  exit 1
+fi
+exit 0
