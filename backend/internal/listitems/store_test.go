@@ -217,6 +217,91 @@ func TestAddBumpsItemsMasterAndReplayDoesNotDoubleBump(t *testing.T) {
 	assertMaster("after idempotent replay")
 }
 
+// TestAddIncrementsExistingMasterAcrossListItems: under ONE household+list, adding
+// TWO DISTINCT list-item UUIDs that share a name collapses to a single items-master
+// row for (household, lower(name)) whose purchase_count reaches 2 — exercising the
+// ON CONFLICT (household_id, lower(name)) DO UPDATE SET purchase_count + 1 path of
+// migration 0005 — and whose last_purchased_at is set and advances on the 2nd add.
+func TestAddIncrementsExistingMasterAcrossListItems(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t)
+	s := listitems.NewStore(pool)
+	hh := mkHousehold(t, pool)
+	list := mkList(t, pool, hh, false)
+
+	idA := "aa111111-1111-1111-1111-111111111111"
+	idB := "bb222222-2222-2222-2222-222222222222"
+
+	// masterOf reads the single live master row for (household, lower("Mjölk")).
+	masterOf := func(where string) (rows, purchaseCount int, lastPurchased time.Time) {
+		t.Helper()
+		var lp *time.Time
+		if err := pool.QueryRow(ctx,
+			`SELECT count(*), coalesce(max(purchase_count), 0), max(last_purchased_at)
+			   FROM items
+			  WHERE household_id = $1::uuid AND lower(name) = lower($2) AND deleted_at IS NULL`,
+			hh, "Mjölk",
+		).Scan(&rows, &purchaseCount, &lp); err != nil {
+			t.Fatalf("%s: query master: %v", where, err)
+		}
+		if lp == nil {
+			t.Fatalf("%s: last_purchased_at is NULL, want set", where)
+		}
+		return rows, purchaseCount, *lp
+	}
+
+	// First add: fresh insert of the master (purchase_count 1).
+	if _, created, err := s.Add(ctx, hh, list, idA, listitems.AddInput{Name: "Mjölk"}); err != nil || !created {
+		t.Fatalf("first add: created=%v err=%v", created, err)
+	}
+	rows, purchaseCount, firstPurchased := masterOf("after first add")
+	if rows != 1 || purchaseCount != 1 {
+		t.Fatalf("after first add: master rows=%d purchase_count=%d, want 1 and 1", rows, purchaseCount)
+	}
+
+	// Sleep so now() can advance and last_purchased_at is observably later.
+	time.Sleep(5 * time.Millisecond)
+
+	// Second add: a DISTINCT list-item UUID with the SAME name → ON CONFLICT bump.
+	if _, created, err := s.Add(ctx, hh, list, idB, listitems.AddInput{Name: "Mjölk"}); err != nil || !created {
+		t.Fatalf("second add: created=%v err=%v", created, err)
+	}
+	rows, purchaseCount, secondPurchased := masterOf("after second add")
+	if rows != 1 {
+		t.Fatalf("after second add: master rows=%d, want exactly 1 for (household, lower(name))", rows)
+	}
+	if purchaseCount != 2 {
+		t.Fatalf("after second add: purchase_count=%d, want 2 (ON CONFLICT DO UPDATE +1)", purchaseCount)
+	}
+	if !secondPurchased.After(firstPurchased) {
+		t.Fatalf("last_purchased_at did not advance: first=%v second=%v", firstPurchased, secondPurchased)
+	}
+}
+
+// TestAddLinksValidHouseholdItemID: passing an item_id that is a live item of the
+// SAME household links it — the returned ListItem.ItemID is non-nil and equals the
+// supplied item id (valid same-household reference round-trips through the row).
+func TestAddLinksValidHouseholdItemID(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t)
+	s := listitems.NewStore(pool)
+	hh := mkHousehold(t, pool)
+	list := mkList(t, pool, hh, false)
+	itemID := mkItem(t, pool, hh, "Mjölk")
+	id := "cc333333-3333-3333-3333-333333333333"
+
+	li, created, err := s.Add(ctx, hh, list, id, listitems.AddInput{Name: "Mjölk", ItemID: strptr(itemID)})
+	if err != nil || !created {
+		t.Fatalf("add with item_id: created=%v err=%v", created, err)
+	}
+	if li.ItemID == nil {
+		t.Fatalf("ItemID = nil, want linked to %s", itemID)
+	}
+	if *li.ItemID != itemID {
+		t.Fatalf("ItemID = %s, want %s", *li.ItemID, itemID)
+	}
+}
+
 // TestAddForeignOrDeletedListReturnsNotFound: a list id belonging to another
 // household, or one that is soft-deleted, yields ErrNotFound (no existence leak).
 func TestAddForeignOrDeletedListReturnsNotFound(t *testing.T) {

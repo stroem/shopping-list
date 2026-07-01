@@ -244,3 +244,65 @@ func TestDeleteListItem_404OnNotFound(t *testing.T) {
 		t.Fatalf("code = %d, want 404", rec.Code)
 	}
 }
+
+// TestPutListItem_400OnZeroQuantity pins the spec's quantity >= 1 rule: an
+// explicit quantity of 0 is non-positive and must be rejected with 400. The
+// handler currently only rejects quantity < 0, so 0 slips through to the store.
+func TestPutListItem_400OnZeroQuantity(t *testing.T) {
+	hh := "h-1"
+	p := &web.Principal{UserID: "u-1", HouseholdID: &hh}
+	// A store that would happily create a row if the handler let 0 through, so
+	// the only way to reach 400 is the missing non-positive-quantity validation.
+	store := &fakeListItems{created: true, item: listitems.ListItem{ID: validID, ListID: validListID, Name: "Mjölk"}}
+	rec := do(t, newListItemRouter(p, store), http.MethodPut, itemPath(), `{"name":"Mjölk","quantity":0}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code = %d, want 400 (quantity 0 is non-positive)", rec.Code)
+	}
+}
+
+// TestPatchListItem_400OnNegativeQuantity pins that PATCH validates quantity
+// too: a negative quantity must be rejected with 400 rather than persisted. The
+// PATCH handler currently forwards quantity to the store unvalidated.
+func TestPatchListItem_400OnNegativeQuantity(t *testing.T) {
+	hh := "h-1"
+	p := &web.Principal{UserID: "u-1", HouseholdID: &hh}
+	// A store that would return a valid row if reached, so 400 can only come
+	// from the new validation, not from a store error.
+	store := &fakeListItems{item: listitems.ListItem{ID: validID, ListID: validListID, Name: "Mjölk"}}
+	rec := do(t, newListItemRouter(p, store), http.MethodPatch, itemPath(), `{"quantity":-1}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code = %d, want 400 (negative quantity is invalid)", rec.Code)
+	}
+}
+
+// TestPatchListItem_400OnZeroQuantity pins the same quantity >= 1 rule on PATCH:
+// an explicit quantity of 0 is non-positive and must be rejected with 400.
+func TestPatchListItem_400OnZeroQuantity(t *testing.T) {
+	hh := "h-1"
+	p := &web.Principal{UserID: "u-1", HouseholdID: &hh}
+	store := &fakeListItems{item: listitems.ListItem{ID: validID, ListID: validListID, Name: "Mjölk"}}
+	rec := do(t, newListItemRouter(p, store), http.MethodPatch, itemPath(), `{"quantity":0}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code = %d, want 400 (quantity 0 is non-positive)", rec.Code)
+	}
+}
+
+// TestListListItems_400OnBadListUUID pins that a malformed {listId} in the path
+// is rejected with 400 BEFORE the store is consulted. The list handler currently
+// forwards the raw listId straight to the store (a real store would then 500),
+// so we assert both the 400 status and that List was never called — the fake's
+// List records the scope it saw, so an empty gotListID proves it was skipped.
+func TestListListItems_400OnBadListUUID(t *testing.T) {
+	hh := "h-1"
+	p := &web.Principal{UserID: "u-1", HouseholdID: &hh}
+	// If the handler wrongly reached the store, List would return this row and
+	// the handler would answer 200 — distinctly not the 400 we require.
+	store := &fakeListItems{all: []listitems.ListItem{{ID: validID, ListID: validListID, Name: "Mjölk"}}}
+	rec := do(t, newListItemRouter(p, store), http.MethodGet, "/v1/lists/not-a-uuid/items", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code = %d, want 400 (malformed list id)", rec.Code)
+	}
+	if store.gotListID != "" {
+		t.Fatalf("store.List was called with listID=%q; want the handler to reject before reaching the store", store.gotListID)
+	}
+}

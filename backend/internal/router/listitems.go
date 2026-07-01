@@ -60,8 +60,8 @@ func putListItem(store ListItemStore) http.HandlerFunc {
 			web.Error(w, http.StatusBadRequest, "name required")
 			return
 		}
-		if body.Quantity != nil && *body.Quantity < 0 {
-			web.Error(w, http.StatusBadRequest, "quantity must not be negative")
+		if body.Quantity != nil && *body.Quantity <= 0 {
+			web.Error(w, http.StatusBadRequest, "quantity must be positive")
 			return
 		}
 		// A nil quantity passes 0 so the store defaults it to 1.
@@ -101,6 +101,10 @@ func listListItems(store ListItemStore) http.HandlerFunc {
 			return
 		}
 		listID := chi.URLParam(r, "listId")
+		if _, err := uuid.Parse(listID); err != nil {
+			web.Error(w, http.StatusBadRequest, "invalid list id")
+			return
+		}
 		items, err := store.List(r.Context(), hh, listID)
 		if err != nil {
 			web.ServerError(w, r, err, "list list items failed")
@@ -132,6 +136,10 @@ func patchListItem(store ListItemStore) http.HandlerFunc {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
 			(body.Quantity == nil && body.Note == nil && body.Position == nil) {
 			web.Error(w, http.StatusBadRequest, "quantity, note or position required")
+			return
+		}
+		if body.Quantity != nil && *body.Quantity <= 0 {
+			web.Error(w, http.StatusBadRequest, "quantity must be positive")
 			return
 		}
 		li, err := store.Update(r.Context(), hh, id, body.Quantity, body.Note, body.Position)
