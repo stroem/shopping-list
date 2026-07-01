@@ -1,6 +1,7 @@
 # Downloaded source data — never committed.
 # Consumed once by backend/cmd/seed to populate the catalog + EAN tables.
-data/
+# Anchored to the repo root so it does not swallow the app's lib/data package.
+/data/
 
 # Env / secrets
 .env
