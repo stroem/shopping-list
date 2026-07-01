@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/stroem/shopping-list/backend/internal/listitems"
 	"github.com/stroem/shopping-list/backend/internal/web"
 )
@@ -43,6 +44,12 @@ func checkOffListItem(store CheckOffStore) http.HandlerFunc {
 		clientEventID := body.ClientEventID
 		if clientEventID != nil && *clientEventID == "" {
 			clientEventID = nil
+		}
+		if clientEventID != nil {
+			if _, err := uuid.Parse(*clientEventID); err != nil {
+				web.Error(w, http.StatusBadRequest, "invalid client_event_id")
+				return
+			}
 		}
 		li, err := store.CheckOff(r.Context(), hh, id, p.UserID, clientEventID)
 		if errors.Is(err, listitems.ErrNotFound) {

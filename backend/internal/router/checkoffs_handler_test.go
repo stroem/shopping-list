@@ -148,6 +148,24 @@ func TestCheckOff_400OnBadItemUUID(t *testing.T) {
 	}
 }
 
+// TestCheckOff_400OnBadClientEventID pins that a non-UUID client_event_id in the
+// body is rejected with 400 before the store (and Postgres' $6::uuid cast) is
+// consulted — a malformed client value must not surface as a 500.
+func TestCheckOff_400OnBadClientEventID(t *testing.T) {
+	hh := "h-1"
+	p := &web.Principal{UserID: "u-1", HouseholdID: &hh}
+	store := &fakeCheckOffs{item: listitems.ListItem{ID: validID}}
+
+	rec := do(t, newCheckOffRouter(p, store), http.MethodPost, checkOffPath(),
+		`{"client_event_id":"not-a-uuid"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code = %d, want 400 (malformed client_event_id)", rec.Code)
+	}
+	if store.gotUserID != "" {
+		t.Fatalf("store was called (gotUserID=%q); want the handler to reject before reaching the store", store.gotUserID)
+	}
+}
+
 // TestCheckOff_400OnBadListUUID pins the same UUID validation on the {listId}
 // path param, matching the nested list-item handlers.
 func TestCheckOff_400OnBadListUUID(t *testing.T) {
