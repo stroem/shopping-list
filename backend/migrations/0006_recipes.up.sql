@@ -1,5 +1,5 @@
 -- Recipes and their ingredients. Household-scoped, owner-tagged, with private/
--- household visibility. Tables only here; indexes land in a later migration.
+-- household visibility. Sync-cursor and FK-lookup indexes follow the tables.
 CREATE TABLE recipes (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id    uuid NOT NULL REFERENCES households(id),
@@ -30,3 +30,10 @@ CREATE TABLE recipe_ingredients (
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz
 );
+
+-- Indexes: pull-sync cursor + household/recipe scoping
+CREATE INDEX recipes_sync            ON recipes            (household_id, updated_at);
+CREATE INDEX recipe_ingredients_sync ON recipe_ingredients (recipe_id, updated_at);
+
+-- Indexes: lookups
+CREATE INDEX recipe_ingredients_recipe ON recipe_ingredients (recipe_id);
