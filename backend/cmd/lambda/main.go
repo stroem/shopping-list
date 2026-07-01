@@ -19,6 +19,7 @@ import (
 	"github.com/stroem/shopping-list/backend/internal/db"
 	"github.com/stroem/shopping-list/backend/internal/households"
 	"github.com/stroem/shopping-list/backend/internal/idempotency"
+	"github.com/stroem/shopping-list/backend/internal/listitems"
 	"github.com/stroem/shopping-list/backend/internal/lists"
 	"github.com/stroem/shopping-list/backend/internal/logging"
 	"github.com/stroem/shopping-list/backend/internal/router"
@@ -75,6 +76,7 @@ func main() {
 		AuthMiddleware:        auth.Middleware(verifier, auth.NewUserStore(pool)),
 		Households:            households.NewStore(pool),
 		Lists:                 lists.NewStore(pool),
+		ListItems:             listitems.NewStore(pool),
 		Sync:                  syncpkg.NewStore(pool),
 		IdempotencyMiddleware: idempotency.Middleware(idempotency.NewStore(pool)),
 		CORSAllowedOrigins:    corsOrigins,
