@@ -53,8 +53,8 @@ func TestVersionAfterUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Version: %v", err)
 	}
-	if v != 6 || dirty {
-		t.Fatalf("Version after up = (%d, dirty=%v), want (6, false)", v, dirty)
+	if v != 7 || dirty {
+		t.Fatalf("Version after up = (%d, dirty=%v), want (7, false)", v, dirty)
 	}
 }
 
