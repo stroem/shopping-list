@@ -13,9 +13,11 @@ case "$branch" in
 esac
 
 staged="$(git diff --cached --name-only)"
-if printf '%s\n' "$staged" | grep -Eq '(^|/)data/'; then
+# Anchored to the repo root: guards the downloaded source-data dir (data/food/*),
+# not nested code packages such as app/lib/data or app/test/data.
+if printf '%s\n' "$staged" | grep -Eq '^data/'; then
   echo "✖ pre-commit: files under data/ must never be committed (gitignored source data)." >&2
-  printf '%s\n' "$staged" | grep -E '(^|/)data/' | sed 's/^/    /' >&2
+  printf '%s\n' "$staged" | grep -E '^data/' | sed 's/^/    /' >&2
   echo "  (Intentional override: git commit --no-verify)" >&2
   exit 1
 fi
