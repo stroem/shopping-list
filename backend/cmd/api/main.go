@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stroem/shopping-list/backend/internal/auth"
+	"github.com/stroem/shopping-list/backend/internal/checkoffs"
 	"github.com/stroem/shopping-list/backend/internal/config"
 	"github.com/stroem/shopping-list/backend/internal/db"
 	"github.com/stroem/shopping-list/backend/internal/households"
@@ -58,6 +59,7 @@ func main() {
 			Households:            households.NewStore(pool),
 			Lists:                 lists.NewStore(pool),
 			ListItems:             listitems.NewStore(pool),
+			CheckOffs:             checkoffs.NewStore(pool),
 			Sync:                  syncpkg.NewStore(pool),
 			IdempotencyMiddleware: idempotency.Middleware(idempotency.NewStore(pool)),
 			CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
