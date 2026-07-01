@@ -163,3 +163,72 @@ DO UPDATE SET purchase_count = items.purchase_count + 1,
 	}
 	return li, created, nil
 }
+
+// List returns the target list's live, household-scoped rows ordered by position
+// ASC then created_at ASC. A foreign or soft-deleted list id matches no rows and
+// yields a non-nil empty slice — the household scope alone excludes it, no error.
+func (s *Store) List(ctx context.Context, householdID, listID string) ([]ListItem, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT `+listItemCols+` FROM list_items
+		 WHERE list_id = $1::uuid AND household_id = $2::uuid AND deleted_at IS NULL
+		 ORDER BY position ASC, created_at ASC`,
+		listID, householdID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list list items: %w", err)
+	}
+	defer rows.Close()
+
+	out := []ListItem{}
+	for rows.Next() {
+		li, err := scanListItem(rows, nil)
+		if err != nil {
+			return nil, fmt.Errorf("scan list item: %w", err)
+		}
+		out = append(out, li)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate list items: %w", err)
+	}
+	return out, nil
+}
+
+// Update patches quantity, note, and/or position on a live, household-scoped row;
+// a nil argument leaves that column unchanged (COALESCE), and every call advances
+// updated_at. Returns ErrNotFound if the row is absent, foreign, or soft-deleted.
+func (s *Store) Update(ctx context.Context, householdID, id string, quantity *int, note *string, position *int) (ListItem, error) {
+	li, err := scanListItem(s.db.QueryRow(ctx, `
+UPDATE list_items SET
+    quantity   = COALESCE($3, quantity),
+    note       = COALESCE($4, note),
+    position   = COALESCE($5, position),
+    updated_at = now()
+WHERE id = $1::uuid AND household_id = $2::uuid AND deleted_at IS NULL
+RETURNING `+listItemCols,
+		id, householdID, quantity, note, position,
+	), nil)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ListItem{}, ErrNotFound
+	}
+	if err != nil {
+		return ListItem{}, fmt.Errorf("update list item: %w", err)
+	}
+	return li, nil
+}
+
+// SoftDelete sets deleted_at on a live, household-scoped row. Returns ErrNotFound
+// if no live row matched (absent, foreign, or already deleted); delete is terminal.
+func (s *Store) SoftDelete(ctx context.Context, householdID, id string) error {
+	tag, err := s.db.Exec(ctx,
+		`UPDATE list_items SET deleted_at = now(), updated_at = now()
+		 WHERE id = $1::uuid AND household_id = $2::uuid AND deleted_at IS NULL`,
+		id, householdID,
+	)
+	if err != nil {
+		return fmt.Errorf("soft-delete list item: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
